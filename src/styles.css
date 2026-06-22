@@ -576,6 +576,197 @@ button:focus-visible,
   text-align: center;
 }
 
+.subpage-hero {
+  min-height: 48vh;
+  display: grid;
+  place-items: center;
+  padding: 120px 20px 56px;
+  color: #fff;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(31, 20, 38, 0.3), rgba(31, 20, 38, 0.58)),
+    url("/assets/images/hero-alt.jpg") center / cover;
+}
+
+.subpage-hero div {
+  width: min(760px, 100%);
+}
+
+.subpage-hero span,
+.admin-head span {
+  color: #ffd8e8;
+  font-family: Alimama, sans-serif;
+  font-size: 18px;
+}
+
+.subpage-hero h1,
+.admin-head h1 {
+  margin: 10px 0 14px;
+  font-family: Alimama, sans-serif;
+  font-size: clamp(42px, 8vw, 82px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.subpage-hero p,
+.admin-head p {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.empty-state {
+  width: min(920px, calc(100% - 32px));
+  margin: 38px auto 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 34px;
+  color: var(--muted);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 26px;
+}
+
+.empty-state p {
+  margin: 0;
+  line-height: 1.8;
+}
+
+.admin-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 118px 0 72px;
+}
+
+.admin-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+  border: 1px solid rgba(255, 120, 172, 0.2);
+  border-radius: 8px;
+  padding: 28px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(255, 120, 172, 0.86), rgba(127, 200, 255, 0.78)),
+    url("/assets/images/hero.jpg") center / cover;
+  box-shadow: var(--shadow);
+}
+
+.api-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: #d94682;
+  background: rgba(255, 255, 255, 0.88);
+  font-weight: 700;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.admin-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.admin-panel h2 {
+  margin: 0 0 18px;
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.admin-panel label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #5f6674;
+  font-weight: 700;
+}
+
+.admin-panel input,
+.admin-panel textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 120, 172, 0.22);
+  border-radius: 8px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.86);
+  outline: none;
+}
+
+.admin-panel textarea {
+  min-height: 260px;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, monospace;
+  line-height: 1.7;
+}
+
+.admin-panel input:focus,
+.admin-panel textarea:focus {
+  border-color: rgba(255, 120, 172, 0.72);
+  box-shadow: 0 0 0 3px rgba(255, 120, 172, 0.14);
+}
+
+.admin-panel button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 15px;
+  color: #fff;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-panel button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(255, 120, 172, 0.24);
+}
+
+.editor-panel,
+.preview-panel {
+  grid-column: 2;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.markdown-preview {
+  min-height: 260px;
+  color: #4b5260;
+  line-height: 1.85;
+}
+
+.markdown-preview p {
+  margin: 0 0 14px;
+}
+
+.embed-preview {
+  width: min(100%, 720px);
+  aspect-ratio: 16 / 9;
+  display: block;
+  border: 0;
+  border-radius: 8px;
+  background: #111827;
+}
+
 .search-modal {
   position: fixed;
   inset: 0;
@@ -786,6 +977,21 @@ button:focus-visible,
 
   .content-shell {
     grid-template-columns: 1fr;
+  }
+
+  .admin-head,
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-head {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .editor-panel,
+  .preview-panel {
+    grid-column: auto;
   }
 
   .sidebar {
