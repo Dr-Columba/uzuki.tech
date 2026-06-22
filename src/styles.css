@@ -641,30 +641,11 @@ button:focus-visible,
   background: rgba(255, 255, 255, 0.12);
 }
 
-.cursor-dot,
-.cursor-ring {
+.mouse-trail {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   z-index: 100;
   pointer-events: none;
-  transform: translate(-100px, -100px);
-}
-
-.cursor-dot {
-  width: 8px;
-  height: 8px;
-  margin: -4px 0 0 -4px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.cursor-ring {
-  width: 36px;
-  height: 36px;
-  margin: -18px 0 0 -18px;
-  border: 1px solid rgba(255, 120, 172, 0.72);
-  border-radius: 50%;
 }
 
 .backtop,
@@ -875,8 +856,7 @@ button:focus-visible,
 }
 
 @media (pointer: coarse) {
-  .cursor-dot,
-  .cursor-ring {
+  .mouse-trail {
     display: none;
   }
 }
@@ -891,8 +871,7 @@ button:focus-visible,
     animation-iteration-count: 1 !important;
   }
 
-  .cursor-dot,
-  .cursor-ring,
+  .mouse-trail,
   .sakura {
     display: none;
   }

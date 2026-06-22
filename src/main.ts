@@ -158,8 +158,7 @@ app.innerHTML = `
     </form>
   </div>
 
-  <div class="cursor-dot" data-cursor-dot aria-hidden="true"></div>
-  <div class="cursor-ring" data-cursor-ring aria-hidden="true"></div>
+  <canvas class="mouse-trail" data-mouse-trail aria-hidden="true"></canvas>
   <button class="backtop" type="button" aria-label="回到顶部" data-backtop>
     <img src="/assets/images/backtop.gif" alt="" />
   </button>
@@ -276,7 +275,7 @@ function playClickFeedback(element: HTMLElement): void {
 }
 
 if (!reducedMotion) {
-  installCursor();
+  installMouseTrail();
   installPetDrift();
   installWave();
   installSakura();
@@ -290,29 +289,82 @@ fetch("https://v1.hitokoto.cn/?c=a")
   })
   .catch(() => undefined);
 
-function installCursor(): void {
-  const dot = document.querySelector<HTMLElement>("[data-cursor-dot]");
-  const ring = document.querySelector<HTMLElement>("[data-cursor-ring]");
-  if (!dot || !ring) return;
+function installMouseTrail(): void {
+  const canvas = document.querySelector<HTMLCanvasElement>("[data-mouse-trail]");
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) return;
 
-  let ringX = window.innerWidth / 2;
-  let ringY = window.innerHeight / 2;
-  let mouseX = ringX;
-  let mouseY = ringY;
-
-  window.addEventListener("pointermove", (event) => {
-    mouseX = event.clientX;
-    mouseY = event.clientY;
-    dot.style.transform = `translate(${mouseX}px, ${mouseY}px)`;
-  });
-
-  const tick = () => {
-    ringX += (mouseX - ringX) * 0.16;
-    ringY += (mouseY - ringY) * 0.16;
-    ring.style.transform = `translate(${ringX}px, ${ringY}px)`;
-    requestAnimationFrame(tick);
+  type TrailPoint = {
+    x: number;
+    y: number;
+    age: number;
   };
-  tick();
+
+  const points: TrailPoint[] = [];
+  const maxPoints = 24;
+  const maxAge = 520;
+  let animationFrame = 0;
+  let lastMoveAt = 0;
+
+  const resize = () => {
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * ratio);
+    canvas.height = Math.floor(window.innerHeight * ratio);
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  };
+
+  const draw = (time: number) => {
+    context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    for (let index = points.length - 1; index >= 0; index--) {
+      const point = points[index];
+      const age = time - point.age;
+      if (age > maxAge) {
+        points.splice(index, 1);
+        continue;
+      }
+
+      const progress = age / maxAge;
+      const alpha = (1 - progress) * 0.72;
+      const radius = 9 - progress * 6;
+      context.beginPath();
+      context.fillStyle = `rgba(255, 120, 172, ${alpha})`;
+      context.shadowColor = "rgba(255, 120, 172, 0.34)";
+      context.shadowBlur = 12;
+      context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.shadowBlur = 0;
+    if (points.length > 0 || time - lastMoveAt < 900) {
+      animationFrame = requestAnimationFrame(draw);
+    } else {
+      animationFrame = 0;
+    }
+  };
+
+  const start = () => {
+    if (animationFrame === 0) {
+      animationFrame = requestAnimationFrame(draw);
+    }
+  };
+
+  window.addEventListener("resize", resize);
+  window.addEventListener(
+    "pointermove",
+    (event) => {
+      if (event.pointerType === "touch") return;
+      lastMoveAt = performance.now();
+      points.push({ x: event.clientX, y: event.clientY, age: lastMoveAt });
+      if (points.length > maxPoints) points.shift();
+      start();
+    },
+    { passive: true },
+  );
+
+  resize();
 }
 
 function installPetDrift(): void {
