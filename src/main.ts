@@ -136,6 +136,7 @@ const fallbackPosts: Post[] = [
 
 const tags = ["Vite", "TypeScript", "Bun", "Hono", "SQLite", "ACG", "前端", "迁移"];
 let editingArticleId: number | null = null;
+let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -237,6 +238,7 @@ if (!reducedMotion) {
 function renderRoute(): void {
   if (!pageRoot) return;
   const path = window.location.pathname;
+  document.body.classList.toggle("is-admin-route", path === "/admin");
   setActiveNav(path);
 
   if (path === "/admin") {
@@ -341,10 +343,26 @@ function renderAdminPage(): string {
   return `
     <section class="admin-shell">
       <header class="admin-head">
-        <div>
-          <span>Admin</span>
-          <h1>后台管理</h1>
-          <p>隐藏入口页面，用于文章发布、图片上传、嵌入预览和后续评论管理。</p>
+        <div class="admin-stat-card">
+          <span>文章总数</span>
+          <strong data-stat-total>0</strong>
+        </div>
+        <div class="admin-stat-card">
+          <span>已发布</span>
+          <strong data-stat-published>0</strong>
+        </div>
+        <div class="admin-stat-card">
+          <span>草稿</span>
+          <strong data-stat-drafts>0</strong>
+        </div>
+        <div class="admin-stat-card">
+          <span>媒体</span>
+          <strong data-stat-media>0</strong>
+        </div>
+        <div class="admin-chart" aria-label="内容统计">
+          <i data-chart-published style="--bar-height: 8%;"></i>
+          <i data-chart-drafts style="--bar-height: 8%;"></i>
+          <i data-chart-media style="--bar-height: 8%;"></i>
         </div>
         <div class="api-status" data-api-status>API: checking...</div>
       </header>
@@ -611,6 +629,7 @@ async function loadAdminArticles(): Promise<void> {
     if (!response.ok) throw new Error("Failed to load admin articles");
     const data = (await response.json()) as { articles?: ApiArticle[] };
     const articles = data.articles ?? [];
+    if (!query) updateAdminArticleStats(articles);
     target.innerHTML = articles.length
       ? `
         <div class="admin-ledger" role="table" aria-label="文章台账">
@@ -649,6 +668,36 @@ function iconButton(label: string, action: string, id: number, icon: string, ton
   `;
 }
 
+function updateAdminArticleStats(articles: ApiArticle[]): void {
+  adminStats = {
+    ...adminStats,
+    total: articles.length,
+    published: articles.filter((article) => article.status === "published").length,
+    drafts: articles.filter((article) => article.status === "draft").length,
+  };
+  renderAdminStats();
+}
+
+function renderAdminStats(): void {
+  const max = Math.max(adminStats.published, adminStats.drafts, adminStats.media, 1);
+  const setText = (selector: string, value: number) => {
+    const target = document.querySelector<HTMLElement>(selector);
+    if (target) target.textContent = String(value);
+  };
+  const setBar = (selector: string, value: number) => {
+    const target = document.querySelector<HTMLElement>(selector);
+    if (target) target.style.setProperty("--bar-height", `${Math.max(8, (value / max) * 100)}%`);
+  };
+
+  setText("[data-stat-total]", adminStats.total);
+  setText("[data-stat-published]", adminStats.published);
+  setText("[data-stat-drafts]", adminStats.drafts);
+  setText("[data-stat-media]", adminStats.media);
+  setBar("[data-chart-published]", adminStats.published);
+  setBar("[data-chart-drafts]", adminStats.drafts);
+  setBar("[data-chart-media]", adminStats.media);
+}
+
 async function loadAdminUploads(): Promise<void> {
   const target = document.querySelector<HTMLElement>("[data-admin-media-list]");
   if (!target) return;
@@ -659,6 +708,8 @@ async function loadAdminUploads(): Promise<void> {
     if (!response.ok) throw new Error("Failed to load uploads");
     const data = (await response.json()) as { uploads?: ApiUpload[] };
     const uploads = data.uploads ?? [];
+    adminStats.media = uploads.length;
+    renderAdminStats();
     target.innerHTML = uploads.length
       ? uploads.map(renderMediaItem).join("")
       : `<p>还没有上传图片。上传后会出现在这里，可复用为封面或正文图片。</p>`;
