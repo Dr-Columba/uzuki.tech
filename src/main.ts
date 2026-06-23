@@ -24,6 +24,7 @@ type ApiArticle = {
   markdown: string;
   html: string;
   status: "draft" | "published";
+  sortOrder?: number;
   createdAt: string | number;
   updatedAt: string | number;
   publishedAt: string | number | null;
@@ -134,6 +135,7 @@ const fallbackPosts: Post[] = [
 ];
 
 const tags = ["Vite", "TypeScript", "Bun", "Hono", "SQLite", "ACG", "前端", "迁移"];
+let editingArticleId: number | null = null;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -353,15 +355,25 @@ function renderAdminPage(): string {
           <p class="admin-message" data-admin-message></p>
         </form>
 
-        <section class="admin-panel admin-list-panel" data-admin-content hidden>
+        <nav class="admin-tabs" data-admin-content hidden aria-label="后台功能">
+          <button type="button" class="is-active" data-admin-tab="articles">文章</button>
+          <button type="button" data-admin-tab="editor">编辑器</button>
+          <button type="button" data-admin-tab="media">媒体库</button>
+        </nav>
+
+        <section class="admin-panel admin-list-panel" data-admin-content data-admin-section="articles" hidden>
           <div class="admin-panel-title">
-            <h2>文章</h2>
+            <h2>文章台账</h2>
             <button type="button" data-logout-button>退出</button>
+          </div>
+          <div class="admin-toolbar">
+            <input type="search" placeholder="搜索标题、Slug、分类、摘要" data-article-search />
+            <button type="button" data-new-article>新建文章</button>
           </div>
           <div class="admin-list" data-admin-article-list>正在读取...</div>
         </section>
 
-        <section class="admin-panel media-panel" data-admin-content hidden>
+        <section class="admin-panel media-panel" data-admin-content data-admin-section="media" hidden>
           <div class="admin-panel-title">
             <h2>媒体库</h2>
             <button type="button" data-upload-button>上传图片</button>
@@ -369,8 +381,12 @@ function renderAdminPage(): string {
           <div class="media-list" data-admin-media-list>正在读取...</div>
         </section>
 
-        <form class="admin-panel editor-panel" data-admin-content hidden>
-          <h2>Markdown 编辑器</h2>
+        <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" hidden>
+          <div class="admin-panel-title">
+            <h2>Markdown 编辑器</h2>
+            <button type="button" data-new-article>新建文章</button>
+          </div>
+          <p class="editor-state" data-editor-state>当前：新建文章</p>
           <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
           <label>Slug<input type="text" placeholder="article-slug" data-article-slug /></label>
           <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
@@ -385,7 +401,7 @@ function renderAdminPage(): string {
           </div>
         </form>
 
-        <section class="admin-panel preview-panel" data-admin-content hidden>
+        <section class="admin-panel preview-panel" data-admin-content data-admin-section="editor" hidden>
           <h2>预览</h2>
           <div class="markdown-preview" data-md-preview>输入 Markdown 后这里会显示预览。</div>
         </section>
@@ -557,6 +573,7 @@ function setAdminAuthenticated(user: ApiUser): void {
   document.querySelectorAll<HTMLElement>("[data-admin-content]").forEach((element) => {
     element.hidden = false;
   });
+  switchAdminSection("articles");
   setAdminMessage(`已登录：${user.username}`);
 }
 
@@ -571,27 +588,49 @@ async function loadAdminArticles(): Promise<void> {
   const target = document.querySelector<HTMLElement>("[data-admin-article-list]");
   if (!target) return;
   target.textContent = "正在读取...";
+  const query = document.querySelector<HTMLInputElement>("[data-article-search]")?.value.trim() ?? "";
 
   try {
-    const response = await fetch("/api/admin/articles", { credentials: "include" });
+    const response = await fetch(`/api/admin/articles${query ? `?q=${encodeURIComponent(query)}` : ""}`, { credentials: "include" });
     if (!response.ok) throw new Error("Failed to load admin articles");
     const data = (await response.json()) as { articles?: ApiArticle[] };
     const articles = data.articles ?? [];
     target.innerHTML = articles.length
-      ? articles
-          .map(
-            (article) => `
-              <button type="button" class="admin-list-item" data-static-action>
-                <span>${escapeHtml(article.title)}</span>
-                <small>${article.status === "published" ? "已发布" : "草稿"} · ${formatDate(article.updatedAt)}</small>
-              </button>
-            `,
-          )
-          .join("")
+      ? `
+        <div class="admin-ledger" role="table" aria-label="文章台账">
+          ${articles.map(renderArticleLedgerRow).join("")}
+        </div>
+      `
       : `<p>还没有文章。可以先在右侧编辑器保存一篇草稿或发布一篇文章。</p>`;
   } catch {
     target.innerHTML = `<p>文章列表读取失败，请确认后端已启动并已登录。</p>`;
   }
+}
+
+function renderArticleLedgerRow(article: ApiArticle): string {
+  return `
+    <article class="ledger-row" data-article-id="${article.id}" data-article-slug="${escapeHtml(article.slug)}" role="row">
+      <div class="ledger-main">
+        <strong>${escapeHtml(article.title)}</strong>
+        <small>${escapeHtml(article.slug)} · ${escapeHtml(article.category)} · ${article.status === "published" ? "已发布" : "草稿"} · ${formatDate(article.updatedAt)}</small>
+      </div>
+      <div class="ledger-actions">
+        ${iconButton("查看", "view", article.id, "↗")}
+        ${iconButton("编辑", "edit", article.id, "✎")}
+        ${iconButton("上移", "up", article.id, "↑")}
+        ${iconButton("下移", "down", article.id, "↓")}
+        ${iconButton("删除", "delete", article.id, "×", "danger")}
+      </div>
+    </article>
+  `;
+}
+
+function iconButton(label: string, action: string, id: number, icon: string, tone = ""): string {
+  return `
+    <button type="button" class="icon-action ${tone}" aria-label="${label}" data-tooltip="${label}" data-article-action="${action}" data-article-id="${id}">
+      ${icon}
+    </button>
+  `;
 }
 
 async function loadAdminUploads(): Promise<void> {
@@ -652,8 +691,8 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   setAdminButtonsBusy(true);
 
   try {
-    const response = await fetch("/api/admin/articles", {
-      method: "POST",
+    const response = await fetch(editingArticleId ? `/api/admin/articles/${editingArticleId}` : "/api/admin/articles", {
+      method: editingArticleId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
@@ -668,6 +707,7 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
     });
     if (!response.ok) throw new Error("Save failed");
     const data = (await response.json()) as { article: ApiArticle };
+    editingArticleId = data.article.id;
     slugInput!.value = data.article.slug;
     setAdminMessage(status === "published" ? "文章已发布。" : "草稿已保存。");
     showToast(status === "published" ? "文章已发布。" : "草稿已保存。");
@@ -718,6 +758,74 @@ async function uploadAdminImage(file: File): Promise<void> {
   }
 }
 
+async function editArticle(id: number): Promise<void> {
+  try {
+    const response = await fetch("/api/admin/articles", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to load articles");
+    const data = (await response.json()) as { articles?: ApiArticle[] };
+    const article = data.articles?.find((item) => item.id === id);
+    if (!article) throw new Error("Article not found");
+    fillArticleEditor(article);
+    switchAdminSection("editor");
+    showToast("已载入文章。");
+  } catch {
+    showToast("载入文章失败。", "error");
+  }
+}
+
+async function deleteArticle(id: number): Promise<void> {
+  if (!window.confirm("确定删除这篇文章？此操作不可恢复。")) return;
+  try {
+    const response = await fetch(`/api/admin/articles/${id}`, { method: "DELETE", credentials: "include" });
+    if (!response.ok) throw new Error("Delete failed");
+    if (editingArticleId === id) clearArticleEditor();
+    await loadAdminArticles();
+    await loadPublishedArticles();
+    showToast("文章已删除。");
+  } catch {
+    showToast("删除失败。", "error");
+  }
+}
+
+async function moveArticle(id: number, direction: "up" | "down"): Promise<void> {
+  try {
+    const response = await fetch(`/api/admin/articles/${id}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ direction }),
+    });
+    if (!response.ok) throw new Error("Move failed");
+    await loadAdminArticles();
+    await loadPublishedArticles();
+    showToast(direction === "up" ? "已上移。" : "已下移。");
+  } catch {
+    showToast("调整顺序失败。", "error");
+  }
+}
+
+function fillArticleEditor(article: ApiArticle): void {
+  editingArticleId = article.id;
+  document.querySelector<HTMLInputElement>("[data-article-title]")!.value = article.title;
+  document.querySelector<HTMLInputElement>("[data-article-slug]")!.value = article.slug;
+  document.querySelector<HTMLInputElement>("[data-article-category]")!.value = article.category;
+  document.querySelector<HTMLTextAreaElement>("[data-article-summary]")!.value = article.summary;
+  document.querySelector<HTMLInputElement>("[data-article-cover]")!.value = article.coverImage ?? "";
+  document.querySelector<HTMLTextAreaElement>("[data-md-source]")!.value = article.markdown;
+  const state = document.querySelector<HTMLElement>("[data-editor-state]");
+  if (state) state.textContent = `当前：编辑 #${article.id} · ${article.status === "published" ? "已发布" : "草稿"}`;
+  updateMarkdownPreview(article.markdown);
+}
+
+function switchAdminSection(section: "articles" | "editor" | "media"): void {
+  document.querySelectorAll<HTMLElement>("[data-admin-section]").forEach((element) => {
+    element.hidden = element.dataset.adminSection !== section;
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-admin-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.adminTab === section);
+  });
+}
+
 function setCoverImage(path: string): void {
   const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
   if (!coverInput || !path) return;
@@ -748,17 +856,36 @@ function setUploadBusy(isBusy: boolean): void {
 }
 
 function clearArticleEditor(): void {
+  editingArticleId = null;
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
     "[data-article-title], [data-article-slug], [data-article-category], [data-article-summary], [data-article-cover], [data-md-source]",
   ).forEach((field) => {
     field.value = "";
   });
+  const state = document.querySelector<HTMLElement>("[data-editor-state]");
+  if (state) state.textContent = "当前：新建文章";
   updateMarkdownPreview("");
 }
 
 function handleInteractiveClick(event: MouseEvent): void {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  const tabButton = target.closest<HTMLButtonElement>("[data-admin-tab]");
+  if (tabButton) {
+    event.preventDefault();
+    const tab = tabButton.dataset.adminTab;
+    if (tab === "articles" || tab === "editor" || tab === "media") switchAdminSection(tab);
+    return;
+  }
+
+  if (target.closest("[data-new-article]")) {
+    event.preventDefault();
+    clearArticleEditor();
+    switchAdminSection("editor");
+    showToast("已切换为新建文章。");
+    return;
+  }
 
   if (target.closest("[data-login-button]")) {
     event.preventDefault();
@@ -787,6 +914,24 @@ function handleInteractiveClick(event: MouseEvent): void {
   if (target.closest("[data-upload-button]")) {
     event.preventDefault();
     document.querySelector<HTMLInputElement>("[data-upload-file]")?.click();
+    return;
+  }
+
+  const articleAction = target.closest<HTMLButtonElement>("[data-article-action]");
+  if (articleAction) {
+    event.preventDefault();
+    const id = Number(articleAction.dataset.articleId);
+    const action = articleAction.dataset.articleAction;
+    if (action === "view") {
+      const row = articleAction.closest<HTMLElement>("[data-article-slug]");
+      const slug = row?.dataset.articleSlug;
+      if (slug) navigate(`/articles/${encodeURIComponent(slug)}`);
+      return;
+    }
+    if (action === "edit") void editArticle(id);
+    if (action === "delete") void deleteArticle(id);
+    if (action === "up") void moveArticle(id, "up");
+    if (action === "down") void moveArticle(id, "down");
     return;
   }
 
@@ -838,6 +983,10 @@ function handleInteractiveKeydown(event: KeyboardEvent): void {
 
 function handleAdminPreview(event: Event): void {
   const target = event.target;
+  if (target instanceof HTMLInputElement && target.matches("[data-article-search]")) {
+    void loadAdminArticles();
+    return;
+  }
   if (!(target instanceof HTMLTextAreaElement) || !target.matches("[data-md-source]")) return;
   updateMarkdownPreview(target.value);
 }
