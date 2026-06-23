@@ -162,6 +162,7 @@ app.innerHTML = `
   </div>
 
   <canvas class="mouse-trail" data-mouse-trail aria-hidden="true"></canvas>
+  <div class="toast-root" data-toast-root aria-live="polite" aria-atomic="true"></div>
   <button class="backtop" type="button" aria-label="回到顶部" data-backtop>
     <img src="/assets/images/backtop.gif" alt="" />
   </button>
@@ -513,9 +514,11 @@ async function loginAdmin(): Promise<void> {
     if (!response.ok) throw new Error("登录失败");
     const data = (await response.json()) as { user: ApiUser };
     setAdminAuthenticated(data.user);
+    showToast("登录成功。");
     await loadAdminArticles();
   } catch {
     setAdminMessage("登录失败，请检查密码。", "error");
+    showToast("登录失败，请检查密码。", "error");
   }
 }
 
@@ -526,6 +529,7 @@ async function logoutAdmin(): Promise<void> {
     element.hidden = true;
   });
   setAdminMessage("已退出登录。");
+  showToast("已退出登录。");
 }
 
 function setAdminAuthenticated(user: ApiUser): void {
@@ -585,10 +589,13 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
 
   if (!title || !slug || !markdown.trim()) {
     setAdminMessage("标题、Slug 和正文不能为空。", "error");
+    showToast("标题、Slug 和正文不能为空。", "error");
     return;
   }
 
   setAdminMessage(status === "published" ? "正在发布..." : "正在保存草稿...");
+  showToast(status === "published" ? "正在发布文章..." : "正在保存草稿...");
+  setAdminButtonsBusy(true);
 
   try {
     const response = await fetch("/api/admin/articles", {
@@ -609,15 +616,22 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
     const data = (await response.json()) as { article: ApiArticle };
     slugInput!.value = data.article.slug;
     setAdminMessage(status === "published" ? "文章已发布。" : "草稿已保存。");
+    showToast(status === "published" ? "文章已发布。" : "草稿已保存。");
     await loadAdminArticles();
     if (status === "published") await loadPublishedArticles();
+    if (status === "published") clearArticleEditor();
   } catch {
     setAdminMessage("保存失败。Slug 可能已存在，或登录状态已过期。", "error");
+    showToast("保存失败。Slug 可能已存在，或登录状态已过期。", "error");
+  } finally {
+    setAdminButtonsBusy(false);
   }
 }
 
 async function uploadAdminImage(file: File): Promise<void> {
   setAdminMessage("正在上传图片...");
+  showToast("正在上传图片...");
+  setUploadBusy(true);
   const formData = new FormData();
   formData.append("file", file);
 
@@ -639,9 +653,36 @@ async function uploadAdminImage(file: File): Promise<void> {
       updateMarkdownPreview(markdownInput.value);
     }
     setAdminMessage("图片已上传，并已插入正文。");
+    showToast("图片已上传，并已插入正文。");
   } catch {
     setAdminMessage("图片上传失败，请确认已登录且文件小于 5MB。", "error");
+    showToast("图片上传失败，请确认已登录且文件小于 5MB。", "error");
+  } finally {
+    setUploadBusy(false);
   }
+}
+
+function setAdminButtonsBusy(isBusy: boolean): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-save-draft], [data-publish-article]").forEach((button) => {
+    button.disabled = isBusy;
+    button.classList.toggle("is-busy", isBusy);
+  });
+}
+
+function setUploadBusy(isBusy: boolean): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-upload-button]").forEach((button) => {
+    button.disabled = isBusy;
+    button.classList.toggle("is-busy", isBusy);
+  });
+}
+
+function clearArticleEditor(): void {
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    "[data-article-title], [data-article-slug], [data-article-category], [data-article-summary], [data-article-cover], [data-md-source]",
+  ).forEach((field) => {
+    field.value = "";
+  });
+  updateMarkdownPreview("");
 }
 
 function handleInteractiveClick(event: MouseEvent): void {
@@ -728,7 +769,7 @@ function handleAdminUploadChange(event: Event): void {
 function updateMarkdownPreview(markdown: string): void {
   const preview = document.querySelector<HTMLElement>("[data-md-preview]");
   if (!preview) return;
-  preview.innerHTML = renderMarkdownPreview(markdown);
+  preview.innerHTML = renderMarkdownPreview(markdown) || "输入 Markdown 后这里会显示预览。";
 }
 
 function renderMarkdownPreview(markdown: string): string {
@@ -792,6 +833,20 @@ function playClickFeedback(element: HTMLElement): void {
   void element.offsetWidth;
   element.classList.add("is-clicked");
   window.setTimeout(() => element.classList.remove("is-clicked"), 220);
+}
+
+function showToast(message: string, type: "info" | "error" = "info"): void {
+  const root = document.querySelector<HTMLElement>("[data-toast-root]");
+  if (!root) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type === "error" ? "error" : ""}`.trim();
+  toast.textContent = message;
+  root.append(toast);
+  requestAnimationFrame(() => toast.classList.add("is-visible"));
+  window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 2600);
 }
 
 function openSearch(): void {
