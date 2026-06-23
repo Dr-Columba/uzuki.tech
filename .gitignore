@@ -1,3 +1,30 @@
-﻿node_modules
-.vite
-.screens
+node_modules/
+.vite/
+.screens/
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.key
+*.pem
+ssh-keys/
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+tmp/
+temp/
+
+# Editor and test artifacts
+.vscode/
+.idea/
+coverage/
+playwright-report/
+test-results/
