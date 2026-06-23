@@ -972,6 +972,26 @@ button:focus-visible,
   align-items: start;
 }
 
+.admin-panel[data-admin-login] {
+  width: min(420px, 100%);
+  margin: min(12vh, 96px) auto 0;
+  grid-column: 1 / -1;
+  padding: 26px;
+}
+
+.admin-panel[data-admin-login] h2 {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.admin-panel[data-admin-login] button {
+  width: 100%;
+}
+
+.admin-panel[data-admin-login] .admin-message:empty {
+  display: none;
+}
+
 .admin-tabs {
   grid-column: 1 / -1;
   display: flex;

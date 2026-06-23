@@ -352,7 +352,7 @@ function renderPlaceholderPage(page: { title: string; eyebrow: string; descripti
 function renderAdminPage(): string {
   return `
     <section class="admin-shell">
-      <header class="admin-head">
+      <header class="admin-head" data-admin-content hidden>
         <div class="admin-stat-card">
           <span>文章总数</span>
           <strong data-stat-total>0</strong>
@@ -386,7 +386,7 @@ function renderAdminPage(): string {
         <form class="admin-panel" data-admin-login>
           <h2>登录</h2>
           <label>用户名<input type="text" value="administrator" autocomplete="username" data-login-username /></label>
-          <label>密码<input type="password" placeholder="本地生成的 administrator 密码" autocomplete="current-password" data-login-password /></label>
+          <label>密码<input type="password" autocomplete="current-password" data-login-password /></label>
           <button type="button" data-login-button>登录</button>
           <p class="admin-message" data-admin-message></p>
         </form>
@@ -591,7 +591,7 @@ async function checkAdminSession(): Promise<void> {
   } catch {
     // The login form remains visible when there is no active session.
   }
-  setAdminMessage("请输入 administrator 密码登录。");
+  setAdminMessage("");
 }
 
 async function loginAdmin(): Promise<void> {
@@ -624,6 +624,7 @@ async function logoutAdmin(): Promise<void> {
   document.querySelectorAll<HTMLElement>("[data-admin-content]").forEach((element) => {
     element.hidden = true;
   });
+  stopSystemRefresh();
   setAdminMessage("已退出登录。");
   showToast("已退出登录。");
 }
