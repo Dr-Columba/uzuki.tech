@@ -19,6 +19,7 @@ type ApiArticle = {
   slug: string;
   title: string;
   category: string;
+  tags?: string[];
   summary: string;
   coverImage: string | null;
   markdown: string;
@@ -53,6 +54,18 @@ type ApiSystemInfo = {
   loadAverage: number[];
   uptimeSeconds: number;
   sampledAt: string;
+};
+
+type ApiCategory = {
+  name: string;
+  count: number;
+  slug: string;
+};
+
+type ApiTag = {
+  name: string;
+  count: number;
+  slug: string;
 };
 
 type NavItem = {
@@ -103,47 +116,13 @@ const placeholderPages: Record<string, { title: string; eyebrow: string; descrip
   },
 };
 
-const fallbackPosts: Post[] = [
-  {
-    title: "迁移记录：从 WordPress 到新的卯月科技",
-    category: "公告",
-    date: "2026-06-22",
-    views: "1.2k",
-    comments: 12,
-    excerpt: "前端先独立出来，保留原主题的轻盈二次元博客风格，后续再逐步接入文章、评论和后台。",
-    image: "/assets/images/post-1.jpg",
-    featured: true,
-  },
-  {
-    title: "夏日车站、晚风与待整理的灵感",
-    category: "手记",
-    date: "2026-06-19",
-    views: "864",
-    comments: 8,
-    excerpt: "把旧站里的图片、文章和分类慢慢归档，新的首页先作为个人入口和内容索引使用。",
-    image: "/assets/images/post-3.jpg",
-  },
-  {
-    title: "前端栈选择：Vite、TypeScript 与静态优先",
-    category: "技术",
-    date: "2026-06-16",
-    views: "932",
-    comments: 4,
-    excerpt: "服务器配置一般时，尽量把首屏和交互交给浏览器静态资源，后端只负责必要的数据接口。",
-    image: "/assets/images/post-4.jpg",
-  },
-  {
-    title: "关于博客 UI 动效的边界",
-    category: "设计",
-    date: "2026-06-12",
-    views: "706",
-    comments: 6,
-    excerpt: "樱花、鼠标轨迹和桌宠都可以有，但需要低消耗，并尊重系统的减少动态效果设置。",
-    image: "/assets/images/post-2.jpg",
-  },
-];
-
-const tags = ["Vite", "TypeScript", "Bun", "Hono", "SQLite", "ACG", "前端", "迁移"];
+const categoryRoutes: Record<string, string> = {
+  "/announcements": "公告",
+  "/notes": "手记",
+  "/acg": "ACG",
+  "/resources": "资源",
+  "/gallery": "相册",
+};
 let editingArticleId: number | null = null;
 let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
 let systemRefreshTimer = 0;
@@ -264,6 +243,26 @@ function renderRoute(): void {
     return;
   }
 
+  if (path.startsWith("/categories/")) {
+    const category = decodeURIComponent(path.replace("/categories/", ""));
+    pageRoot.innerHTML = renderListingPage(category, "分类");
+    loadPublishedArticles({ category });
+    return;
+  }
+
+  if (path.startsWith("/tags/")) {
+    const tag = decodeURIComponent(path.replace("/tags/", ""));
+    pageRoot.innerHTML = renderListingPage(tag, "标签");
+    loadPublishedArticles({ tag });
+    return;
+  }
+
+  if (categoryRoutes[path]) {
+    pageRoot.innerHTML = renderListingPage(categoryRoutes[path], "分类");
+    loadPublishedArticles({ category: categoryRoutes[path] });
+    return;
+  }
+
   if (path !== "/" && placeholderPages[path]) {
     pageRoot.innerHTML = renderPlaceholderPage(placeholderPages[path]);
     return;
@@ -273,6 +272,7 @@ function renderRoute(): void {
   installWave();
   fetchHitokoto();
   loadPublishedArticles();
+  loadHomeMeta();
 }
 
 function setActiveNav(path: string): void {
@@ -305,8 +305,7 @@ function renderHomePage(): string {
 
     <section class="content-shell" id="posts">
       <div class="post-column" aria-label="文章列表" data-post-column>
-        ${fallbackPosts.map(renderPost).join("")}
-        ${renderPagination()}
+        ${renderPostListState("正在读取文章...")}
       </div>
 
       <aside class="sidebar" id="about" aria-label="侧边栏">
@@ -317,18 +316,34 @@ function renderHomePage(): string {
         </section>
         <section class="side-panel">
           <h2>分类</h2>
-          <a href="/announcements" data-route>公告通知 <span>3</span></a>
-          <a href="/notes" data-route>技术笔记 <span>8</span></a>
-          <a href="/notes" data-route>生活手记 <span>12</span></a>
-          <a href="/gallery" data-route>相册收藏 <span>6</span></a>
+          <div data-category-list>
+            ${renderSidebarState("暂无分类")}
+          </div>
         </section>
         <section class="side-panel">
           <h2>标签</h2>
-          <div class="tag-cloud">
-            ${tags.map((tag) => `<a href="#" data-static-action>${tag}</a>`).join("")}
+          <div class="tag-cloud" data-tag-cloud>
+            ${renderSidebarState("暂无标签")}
           </div>
         </section>
       </aside>
+    </section>
+  `;
+}
+
+function renderListingPage(title: string, eyebrow: string): string {
+  return `
+    <section class="subpage-hero">
+      <div>
+        <span>${escapeHtml(eyebrow)}</span>
+        <h1>${escapeHtml(title)}</h1>
+        <p>这里会展示后端中属于该${escapeHtml(eyebrow)}的已发布文章。</p>
+      </div>
+    </section>
+    <section class="content-shell listing-shell">
+      <div class="post-column" data-post-column>
+        ${renderPostListState("正在读取文章...")}
+      </div>
     </section>
   `;
 }
@@ -437,6 +452,7 @@ function renderAdminPage(): string {
           <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
           <label>Slug<input type="text" placeholder="article-slug" data-article-slug /></label>
           <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
+          <label>标签<input type="text" placeholder="用英文逗号分隔，例如 Bun, SQLite" data-article-tags /></label>
           <label>摘要<textarea rows="3" placeholder="首页文章摘要" data-article-summary></textarea></label>
           <label>封面图<input type="text" placeholder="/api/uploads/..." data-article-cover /></label>
           <div class="markdown-toolbar" data-md-toolbar aria-label="Markdown 工具栏">
@@ -482,7 +498,7 @@ function renderPost(post: Post): string {
           : ""
       }
       <div class="post-body">
-        <a class="category" href="#" data-static-action>${escapeHtml(post.category)}</a>
+        <a class="category" href="/categories/${encodeURIComponent(post.category)}" data-route>${escapeHtml(post.category)}</a>
         <h2><a href="${href}" ${routeAttr}>${escapeHtml(post.title)}</a></h2>
         <p>${escapeHtml(post.excerpt)}</p>
         <div class="post-meta">
@@ -526,20 +542,80 @@ function renderArticle(article: ApiArticle): string {
   `;
 }
 
-async function loadPublishedArticles(): Promise<void> {
+async function loadPublishedArticles(filter: { category?: string; tag?: string } = {}): Promise<void> {
   const column = document.querySelector<HTMLElement>("[data-post-column]");
   if (!column) return;
 
   try {
-    const response = await fetch("/api/articles");
+    const params = new URLSearchParams();
+    if (filter.category) params.set("category", filter.category);
+    if (filter.tag) params.set("tag", filter.tag);
+    const response = await fetch(`/api/articles${params.size ? `?${params.toString()}` : ""}`);
     if (!response.ok) throw new Error("Failed to load articles");
     const data = (await response.json()) as { articles?: ApiArticle[] };
-    if (!data.articles?.length) return;
+    if (!data.articles?.length) {
+      column.innerHTML = renderPostListState("暂无已发布文章");
+      return;
+    }
     const posts = data.articles.map((article, index) => apiArticleToPost(article, index === 0));
     column.innerHTML = `${posts.map(renderPost).join("")}${renderPagination()}`;
   } catch {
-    // Keep static fallback posts when the backend is not available.
+    column.innerHTML = renderPostListState("文章读取失败，请稍后再试");
   }
+}
+
+async function loadHomeMeta(): Promise<void> {
+  await Promise.all([loadCategories(), loadTags()]);
+}
+
+async function loadCategories(): Promise<void> {
+  const target = document.querySelector<HTMLElement>("[data-category-list]");
+  if (!target) return;
+  try {
+    const response = await fetch("/api/categories");
+    if (!response.ok) throw new Error("Failed to load categories");
+    const data = (await response.json()) as { categories?: ApiCategory[] };
+    const categories = data.categories ?? [];
+    target.innerHTML = categories.length
+      ? categories
+          .map(
+            (category) =>
+              `<a href="/categories/${category.slug}" data-route>${escapeHtml(category.name)} <span>${category.count}</span></a>`,
+          )
+          .join("")
+      : renderSidebarState("暂无分类");
+  } catch {
+    target.innerHTML = renderSidebarState("分类读取失败");
+  }
+}
+
+async function loadTags(): Promise<void> {
+  const target = document.querySelector<HTMLElement>("[data-tag-cloud]");
+  if (!target) return;
+  try {
+    const response = await fetch("/api/tags");
+    if (!response.ok) throw new Error("Failed to load tags");
+    const data = (await response.json()) as { tags?: ApiTag[] };
+    const apiTags = data.tags ?? [];
+    target.innerHTML = apiTags.length
+      ? apiTags.map((tag) => `<a href="/tags/${tag.slug}" data-route>${escapeHtml(tag.name)}</a>`).join("")
+      : renderSidebarState("暂无标签");
+  } catch {
+    target.innerHTML = renderSidebarState("标签读取失败");
+  }
+}
+
+function renderPostListState(message: string): string {
+  return `
+    <section class="empty-state inline-empty">
+      <h2>${escapeHtml(message)}</h2>
+      <p>发布文章后，这里会自动显示最新内容。</p>
+    </section>
+  `;
+}
+
+function renderSidebarState(message: string): string {
+  return `<p class="sidebar-empty">${escapeHtml(message)}</p>`;
 }
 
 async function loadArticle(slug: string): Promise<void> {
@@ -571,7 +647,7 @@ function apiArticleToPost(article: ApiArticle, featured = false): Post {
     views: "0",
     comments: 0,
     excerpt: article.summary || stripHtml(article.html).slice(0, 96),
-    image: article.coverImage || "/assets/images/post-1.jpg",
+    image: article.coverImage || undefined,
     featured,
     html: article.html,
   };
@@ -852,6 +928,7 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   const titleInput = document.querySelector<HTMLInputElement>("[data-article-title]");
   const slugInput = document.querySelector<HTMLInputElement>("[data-article-slug]");
   const categoryInput = document.querySelector<HTMLInputElement>("[data-article-category]");
+  const tagsInput = document.querySelector<HTMLInputElement>("[data-article-tags]");
   const summaryInput = document.querySelector<HTMLTextAreaElement>("[data-article-summary]");
   const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
   const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
@@ -880,6 +957,7 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
         title,
         slug,
         category,
+        tags: parseTagInput(tagsInput?.value ?? ""),
         summary: summaryInput?.value.trim() ?? "",
         coverImage: coverInput?.value.trim() ?? "",
         markdown,
@@ -990,6 +1068,7 @@ function fillArticleEditor(article: ApiArticle): void {
   document.querySelector<HTMLInputElement>("[data-article-title]")!.value = article.title;
   document.querySelector<HTMLInputElement>("[data-article-slug]")!.value = article.slug;
   document.querySelector<HTMLInputElement>("[data-article-category]")!.value = article.category;
+  document.querySelector<HTMLInputElement>("[data-article-tags]")!.value = (article.tags ?? []).join(", ");
   document.querySelector<HTMLTextAreaElement>("[data-article-summary]")!.value = article.summary;
   document.querySelector<HTMLInputElement>("[data-article-cover]")!.value = article.coverImage ?? "";
   document.querySelector<HTMLTextAreaElement>("[data-md-source]")!.value = article.markdown;
@@ -1057,7 +1136,7 @@ function setUploadBusy(isBusy: boolean): void {
 function clearArticleEditor(): void {
   editingArticleId = null;
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-    "[data-article-title], [data-article-slug], [data-article-category], [data-article-summary], [data-article-cover], [data-md-source]",
+    "[data-article-title], [data-article-slug], [data-article-category], [data-article-tags], [data-article-summary], [data-article-cover], [data-md-source]",
   ).forEach((field) => {
     field.value = "";
   });
@@ -1446,6 +1525,17 @@ function normalizeSlug(value: string): string {
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120);
+}
+
+function parseTagInput(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 12);
 }
 
 function formatDate(value: string | number | null): string {
