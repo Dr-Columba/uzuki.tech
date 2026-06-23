@@ -845,6 +845,10 @@ button:focus-visible,
   backdrop-filter: blur(16px);
 }
 
+.admin-head[hidden] {
+  display: none;
+}
+
 .admin-stat-card {
   border: 1px solid rgba(255, 120, 172, 0.16);
   border-radius: 8px;
