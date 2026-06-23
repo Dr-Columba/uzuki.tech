@@ -751,7 +751,7 @@ button:focus-visible,
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(300px, 0.45fr) minmax(0, 0.55fr);
   gap: 22px;
   align-items: start;
 }
@@ -1106,7 +1106,17 @@ button:focus-visible,
 
 .editor-panel,
 .preview-panel {
+  grid-column: auto;
+}
+
+.editor-panel {
+  grid-column: 1;
+}
+
+.preview-panel {
   grid-column: 2;
+  position: sticky;
+  top: 92px;
 }
 
 .editor-state {
@@ -1122,7 +1132,7 @@ button:focus-visible,
 }
 
 .markdown-preview {
-  min-height: 260px;
+  min-height: 620px;
   color: #4b5260;
   line-height: 1.85;
 }
