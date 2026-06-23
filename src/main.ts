@@ -46,6 +46,15 @@ type ApiUpload = {
   createdAt: string | number;
 };
 
+type ApiSystemInfo = {
+  cpu: { percent: number };
+  memory: { total: number; used: number; free: number; percent: number };
+  disk: { total: number; used: number; free: number; percent: number; mount: string };
+  loadAverage: number[];
+  uptimeSeconds: number;
+  sampledAt: string;
+};
+
 type NavItem = {
   label: string;
   path: string;
@@ -137,6 +146,7 @@ const fallbackPosts: Post[] = [
 const tags = ["Vite", "TypeScript", "Bun", "Hono", "SQLite", "ACG", "前端", "迁移"];
 let editingArticleId: number | null = null;
 let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
+let systemRefreshTimer = 0;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -385,6 +395,7 @@ function renderAdminPage(): string {
           <button type="button" class="is-active" data-admin-tab="articles">文章</button>
           <button type="button" data-admin-tab="editor">编辑器</button>
           <button type="button" data-admin-tab="media">媒体库</button>
+          <button type="button" data-admin-tab="system">系统信息</button>
         </nav>
 
         <section class="admin-panel admin-list-panel" data-admin-content data-admin-section="articles" hidden>
@@ -405,6 +416,16 @@ function renderAdminPage(): string {
             <button type="button" data-upload-button>上传图片</button>
           </div>
           <div class="media-list" data-admin-media-list>正在读取...</div>
+        </section>
+
+        <section class="admin-panel system-panel" data-admin-content data-admin-section="system" hidden>
+          <div class="admin-panel-title">
+            <h2>系统信息</h2>
+            <button type="button" data-system-refresh>刷新</button>
+          </div>
+          <div class="system-grid" data-system-info>
+            <p>正在读取...</p>
+          </div>
         </section>
 
         <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" hidden>
@@ -696,6 +717,56 @@ function renderAdminStats(): void {
   renderAdminPie();
 }
 
+async function loadSystemInfo(): Promise<void> {
+  const target = document.querySelector<HTMLElement>("[data-system-info]");
+  if (!target) return;
+  try {
+    const response = await fetch("/api/admin/system", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to load system info");
+    const data = (await response.json()) as ApiSystemInfo;
+    target.innerHTML = renderSystemInfo(data);
+  } catch {
+    target.innerHTML = `<p>系统信息读取失败，请确认后端已更新并处于登录状态。</p>`;
+  }
+}
+
+function renderSystemInfo(data: ApiSystemInfo): string {
+  return `
+    ${renderSystemMetric("CPU", data.cpu.percent, `${data.cpu.percent}%`, `Load ${data.loadAverage.map((value) => value.toFixed(2)).join(" / ")}`)}
+    ${renderSystemMetric("内存", data.memory.percent, `${data.memory.percent}%`, `${formatBytes(data.memory.used)} / ${formatBytes(data.memory.total)}`)}
+    ${renderSystemMetric("存储", data.disk.percent, `${data.disk.percent}%`, `${formatBytes(data.disk.used)} / ${formatBytes(data.disk.total)} · ${escapeHtml(data.disk.mount)}`)}
+    <div class="system-card">
+      <span>运行时间</span>
+      <strong>${formatDuration(data.uptimeSeconds)}</strong>
+      <small>采样 ${new Date(data.sampledAt).toLocaleTimeString()}</small>
+    </div>
+  `;
+}
+
+function renderSystemMetric(label: string, percent: number, value: string, detail: string): string {
+  return `
+    <div class="system-card">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <div class="system-meter" aria-label="${label} ${value}">
+        <i style="width: ${Math.min(100, Math.max(0, percent))}%"></i>
+      </div>
+      <small>${detail}</small>
+    </div>
+  `;
+}
+
+function startSystemRefresh(): void {
+  stopSystemRefresh();
+  systemRefreshTimer = window.setInterval(() => void loadSystemInfo(), 5000);
+}
+
+function stopSystemRefresh(): void {
+  if (!systemRefreshTimer) return;
+  window.clearInterval(systemRefreshTimer);
+  systemRefreshTimer = 0;
+}
+
 function renderAdminPie(): void {
   const target = document.querySelector<SVGElement>("[data-admin-pie]");
   if (!target) return;
@@ -926,13 +997,19 @@ function fillArticleEditor(article: ApiArticle): void {
   updateMarkdownPreview(article.markdown);
 }
 
-function switchAdminSection(section: "articles" | "editor" | "media"): void {
+function switchAdminSection(section: "articles" | "editor" | "media" | "system"): void {
   document.querySelectorAll<HTMLElement>("[data-admin-section]").forEach((element) => {
     element.hidden = element.dataset.adminSection !== section;
   });
   document.querySelectorAll<HTMLButtonElement>("[data-admin-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.adminTab === section);
   });
+  if (section === "system") {
+    void loadSystemInfo();
+    startSystemRefresh();
+  } else {
+    stopSystemRefresh();
+  }
 }
 
 function setCoverImage(path: string): void {
@@ -996,7 +1073,13 @@ function handleInteractiveClick(event: MouseEvent): void {
   if (tabButton) {
     event.preventDefault();
     const tab = tabButton.dataset.adminTab;
-    if (tab === "articles" || tab === "editor" || tab === "media") switchAdminSection(tab);
+    if (tab === "articles" || tab === "editor" || tab === "media" || tab === "system") switchAdminSection(tab);
+    return;
+  }
+
+  if (target.closest("[data-system-refresh]")) {
+    event.preventDefault();
+    void loadSystemInfo();
     return;
   }
 
@@ -1375,6 +1458,15 @@ function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDuration(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}天 ${hours}小时`;
+  if (hours > 0) return `${hours}小时 ${minutes}分钟`;
+  return `${minutes}分钟`;
 }
 
 function missingImagePlaceholder(): string {

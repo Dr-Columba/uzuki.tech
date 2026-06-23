@@ -1237,6 +1237,57 @@ button:focus-visible,
   grid-column: 1 / -1;
 }
 
+.system-panel {
+  grid-column: 1 / -1;
+}
+
+.system-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.system-grid p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.system-card {
+  border: 1px solid rgba(255, 120, 172, 0.16);
+  border-radius: 8px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.system-card span,
+.system-card small {
+  display: block;
+  color: var(--muted);
+}
+
+.system-card strong {
+  display: block;
+  margin: 12px 0;
+  color: #d94682;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.system-meter {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(127, 200, 255, 0.14);
+}
+
+.system-meter i {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 240ms ease;
+}
+
 .media-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1712,8 +1763,13 @@ button:focus-visible,
 
   .editor-panel,
   .preview-panel,
-  .media-panel {
+  .media-panel,
+  .system-panel {
     grid-column: auto;
+  }
+
+  .system-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ledger-row {
@@ -1788,6 +1844,10 @@ button:focus-visible,
   .brand,
   .brand img {
     height: 44px;
+  }
+
+  .system-grid {
+    grid-template-columns: 1fr;
   }
 }
 
