@@ -224,6 +224,7 @@ document.addEventListener("click", handleInteractiveClick);
 document.addEventListener("keydown", handleInteractiveKeydown);
 document.addEventListener("input", handleAdminPreview);
 document.addEventListener("change", handleAdminUploadChange);
+document.addEventListener("error", handleImageError, true);
 
 if (!reducedMotion) {
   installMouseTrail();
@@ -661,6 +662,7 @@ function renderMediaItem(upload: ApiUpload): string {
         <div class="media-actions">
           <button type="button" data-media-cover="${escapeHtml(upload.path)}">设为封面</button>
           <button type="button" data-media-insert="${escapeHtml(upload.path)}" data-media-name="${escapeHtml(upload.originalName)}">插入正文</button>
+          <button type="button" class="icon-action danger" aria-label="删除" data-tooltip="删除" data-media-delete="${upload.id}">×</button>
         </div>
       </div>
     </article>
@@ -841,6 +843,18 @@ function insertImageIntoArticle(path: string, name = "image"): void {
   showToast("已插入正文。");
 }
 
+async function deleteUpload(id: number): Promise<void> {
+  if (!window.confirm("确定删除这张图片？使用它的文章会显示图片不存在占位图。")) return;
+  try {
+    const response = await fetch(`/api/admin/uploads/${id}`, { method: "DELETE", credentials: "include" });
+    if (!response.ok) throw new Error("Delete upload failed");
+    await loadAdminUploads();
+    showToast("图片已删除。");
+  } catch {
+    showToast("图片删除失败。", "error");
+  }
+}
+
 function setAdminButtonsBusy(isBusy: boolean): void {
   document.querySelectorAll<HTMLButtonElement>("[data-save-draft], [data-publish-article]").forEach((button) => {
     button.disabled = isBusy;
@@ -949,6 +963,13 @@ function handleInteractiveClick(event: MouseEvent): void {
     return;
   }
 
+  const mediaDeleteButton = target.closest<HTMLButtonElement>("[data-media-delete]");
+  if (mediaDeleteButton) {
+    event.preventDefault();
+    void deleteUpload(Number(mediaDeleteButton.dataset.mediaDelete));
+    return;
+  }
+
   const routeLink = target.closest<HTMLAnchorElement>("a[data-route]");
   if (routeLink) {
     event.preventDefault();
@@ -998,6 +1019,16 @@ function handleAdminUploadChange(event: Event): void {
   if (!file) return;
   void uploadAdminImage(file);
   target.value = "";
+}
+
+function handleImageError(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) return;
+  if (target.dataset.missingImage === "true") return;
+  if (!target.currentSrc.includes("/api/uploads/") && !target.src.includes("/api/uploads/")) return;
+  target.dataset.missingImage = "true";
+  target.alt = "图片不存在";
+  target.src = missingImagePlaceholder();
 }
 
 function updateMarkdownPreview(markdown: string): void {
@@ -1053,6 +1084,11 @@ function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function missingImagePlaceholder(): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540"><rect width="960" height="540" fill="#fff7fb"/><rect x="24" y="24" width="912" height="492" rx="18" fill="#ffffff" stroke="#ff78ac" stroke-opacity=".35" stroke-width="2"/><path d="M408 288l48-58 42 50 30-36 72 86H360l48-42z" fill="#ffd8e8"/><circle cx="586" cy="202" r="24" fill="#ff78ac" fill-opacity=".55"/><text x="480" y="380" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" fill="#7d8493">Image missing</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function stripHtml(value: string): string {
