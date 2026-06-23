@@ -924,9 +924,16 @@ button:focus-visible,
   gap: 8px;
   border-radius: 999px;
   padding: 7px 10px;
+  color: #253044;
   background: rgba(255, 255, 255, 0.74);
   box-shadow: 0 6px 18px rgba(118, 71, 101, 0.08);
   white-space: nowrap;
+}
+
+.admin-head .admin-chart-legend span {
+  color: #253044;
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
 }
 
 .admin-chart-legend i {
