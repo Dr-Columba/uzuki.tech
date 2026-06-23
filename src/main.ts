@@ -1204,7 +1204,7 @@ function renderMarkdownPreview(markdown: string): string {
       continue;
     }
 
-    const quote = trimmed.match(/^>\s+(.+)$/);
+    const quote = trimmed.match(/^(?:>|&gt;)\s+(.+)$/);
     if (quote) {
       flushParagraph();
       flushList();
@@ -1249,7 +1249,10 @@ function renderInlineMarkdown(value: string): string {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label: string, href: string) => {
+      const url = href.startsWith("http://") || href.startsWith("https://") || href.startsWith("/") ? href : `#${href}`;
+      return `<a href="${url}" target="_blank" rel="noreferrer">${label}</a>`;
+    });
 }
 
 function navigate(path: string): void {
