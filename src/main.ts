@@ -360,9 +360,14 @@ function renderAdminPage(): string {
           <strong data-stat-media>0</strong>
         </div>
         <div class="admin-chart" aria-label="内容统计">
-          <i data-chart-published style="--bar-height: 8%;"></i>
-          <i data-chart-drafts style="--bar-height: 8%;"></i>
-          <i data-chart-media style="--bar-height: 8%;"></i>
+          <svg class="admin-pie" viewBox="0 0 120 120" role="img" aria-label="内容占比" data-admin-pie>
+            <circle cx="60" cy="60" r="38" fill="rgba(255, 120, 172, 0.14)"></circle>
+          </svg>
+          <div class="admin-chart-legend">
+            <span><i class="published"></i>已发布</span>
+            <span><i class="drafts"></i>草稿</span>
+            <span><i class="media"></i>媒体</span>
+          </div>
         </div>
         <div class="api-status" data-api-status>API: checking...</div>
       </header>
@@ -679,23 +684,59 @@ function updateAdminArticleStats(articles: ApiArticle[]): void {
 }
 
 function renderAdminStats(): void {
-  const max = Math.max(adminStats.published, adminStats.drafts, adminStats.media, 1);
   const setText = (selector: string, value: number) => {
     const target = document.querySelector<HTMLElement>(selector);
     if (target) target.textContent = String(value);
-  };
-  const setBar = (selector: string, value: number) => {
-    const target = document.querySelector<HTMLElement>(selector);
-    if (target) target.style.setProperty("--bar-height", `${Math.max(8, (value / max) * 100)}%`);
   };
 
   setText("[data-stat-total]", adminStats.total);
   setText("[data-stat-published]", adminStats.published);
   setText("[data-stat-drafts]", adminStats.drafts);
   setText("[data-stat-media]", adminStats.media);
-  setBar("[data-chart-published]", adminStats.published);
-  setBar("[data-chart-drafts]", adminStats.drafts);
-  setBar("[data-chart-media]", adminStats.media);
+  renderAdminPie();
+}
+
+function renderAdminPie(): void {
+  const target = document.querySelector<SVGElement>("[data-admin-pie]");
+  if (!target) return;
+
+  const slices = [
+    { label: "已发布", value: adminStats.published, color: "#ff78ac" },
+    { label: "草稿", value: adminStats.drafts, color: "#7fc8ff" },
+    { label: "媒体", value: adminStats.media, color: "#ffd166" },
+  ].filter((slice) => slice.value > 0);
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+
+  if (!total) {
+    target.innerHTML = `<circle cx="60" cy="60" r="38" fill="rgba(255, 120, 172, 0.14)"></circle><text x="60" y="64" text-anchor="middle" class="pie-empty">No data</text>`;
+    return;
+  }
+
+  let start = -90;
+  target.innerHTML = slices
+    .map((slice) => {
+      const angle = (slice.value / total) * 360;
+      const path = pieSlicePath(60, 60, 42, start, start + angle);
+      const percent = Math.round((slice.value / total) * 100);
+      start += angle;
+      return `<path class="pie-slice" d="${path}" fill="${slice.color}" tabindex="0" aria-label="${slice.label} ${slice.value}，${percent}%"><title>${slice.label}: ${slice.value} (${percent}%)</title></path>`;
+    })
+    .join("");
+}
+
+function pieSlicePath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
+  const start = polarToCartesian(cx, cy, radius, endAngle);
+  const end = polarToCartesian(cx, cy, radius, startAngle);
+  const largeArc = endAngle - startAngle <= 180 ? "0" : "1";
+  return [`M ${cx} ${cy}`, `L ${start.x} ${start.y}`, `A ${radius} ${radius} 0 ${largeArc} 0 ${end.x} ${end.y}`, "Z"].join(" ");
+}
+
+function polarToCartesian(cx: number, cy: number, radius: number, angle: number): { x: string; y: string } {
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: (cx + radius * Math.cos(radians)).toFixed(3),
+    y: (cy + radius * Math.sin(radians)).toFixed(3),
+  };
 }
 
 async function loadAdminUploads(): Promise<void> {
