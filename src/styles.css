@@ -1125,6 +1125,81 @@ button:focus-visible,
   font-size: 13px;
 }
 
+.markdown-toolbar {
+  position: sticky;
+  top: 84px;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(255, 120, 172, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 34px rgba(118, 71, 101, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  backdrop-filter: blur(18px);
+}
+
+.editor-panel.has-md-focus .markdown-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.markdown-toolbar button {
+  position: relative;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255, 120, 172, 0.2);
+  border-radius: 10px !important;
+  padding: 0 !important;
+  color: #d94682;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.markdown-toolbar button:hover {
+  color: #fff;
+  background: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(255, 120, 172, 0.22);
+}
+
+.markdown-toolbar button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: #fff;
+  background: rgba(37, 48, 68, 0.92);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 160ms ease 420ms, transform 160ms ease 420ms;
+}
+
+.markdown-toolbar button:hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .editor-actions {
   display: flex;
   flex-wrap: wrap;

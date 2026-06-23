@@ -224,6 +224,8 @@ document.addEventListener("click", handleInteractiveClick);
 document.addEventListener("keydown", handleInteractiveKeydown);
 document.addEventListener("input", handleAdminPreview);
 document.addEventListener("change", handleAdminUploadChange);
+document.addEventListener("focusin", handleEditorFocus);
+document.addEventListener("focusout", handleEditorBlur);
 document.addEventListener("error", handleImageError, true);
 
 if (!reducedMotion) {
@@ -393,6 +395,19 @@ function renderAdminPage(): string {
           <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
           <label>摘要<textarea rows="3" placeholder="首页文章摘要" data-article-summary></textarea></label>
           <label>封面图<input type="text" placeholder="/api/uploads/..." data-article-cover /></label>
+          <div class="markdown-toolbar" data-md-toolbar aria-label="Markdown 工具栏">
+            <button type="button" data-md-tool="h1" data-tooltip="一级标题">H1</button>
+            <button type="button" data-md-tool="h2" data-tooltip="二级标题">H2</button>
+            <button type="button" data-md-tool="h3" data-tooltip="三级标题">H3</button>
+            <button type="button" data-md-tool="bold" data-tooltip="加粗">B</button>
+            <button type="button" data-md-tool="italic" data-tooltip="斜体">I</button>
+            <button type="button" data-md-tool="quote" data-tooltip="引用">"</button>
+            <button type="button" data-md-tool="ul" data-tooltip="无序列表">•</button>
+            <button type="button" data-md-tool="ol" data-tooltip="有序列表">1.</button>
+            <button type="button" data-md-tool="inline-code" data-tooltip="行内代码">&#96;</button>
+            <button type="button" data-md-tool="code" data-tooltip="代码块">{ }</button>
+            <button type="button" data-md-tool="link" data-tooltip="链接">↗</button>
+          </div>
           <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
           <input type="file" accept="image/*" data-upload-file hidden />
           <div class="editor-actions">
@@ -931,6 +946,13 @@ function handleInteractiveClick(event: MouseEvent): void {
     return;
   }
 
+  const markdownTool = target.closest<HTMLButtonElement>("[data-md-tool]");
+  if (markdownTool) {
+    event.preventDefault();
+    insertMarkdown(markdownTool.dataset.mdTool ?? "");
+    return;
+  }
+
   const articleAction = target.closest<HTMLButtonElement>("[data-article-action]");
   if (articleAction) {
     event.preventDefault();
@@ -1021,6 +1043,22 @@ function handleAdminUploadChange(event: Event): void {
   target.value = "";
 }
 
+function handleEditorFocus(event: FocusEvent): void {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.matches("[data-md-source]") && !target.closest("[data-md-toolbar]")) return;
+  document.querySelector<HTMLElement>(".editor-panel")?.classList.add("has-md-focus");
+}
+
+function handleEditorBlur(): void {
+  window.setTimeout(() => {
+    const active = document.activeElement;
+    const editor = document.querySelector<HTMLElement>(".editor-panel");
+    if (!editor || (active instanceof HTMLElement && (active.matches("[data-md-source]") || active.closest("[data-md-toolbar]")))) return;
+    editor.classList.remove("has-md-focus");
+  }, 80);
+}
+
 function handleImageError(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLImageElement)) return;
@@ -1035,6 +1073,65 @@ function updateMarkdownPreview(markdown: string): void {
   const preview = document.querySelector<HTMLElement>("[data-md-preview]");
   if (!preview) return;
   preview.innerHTML = renderMarkdownPreview(markdown) || "输入 Markdown 后这里会显示预览。";
+}
+
+function insertMarkdown(tool: string): void {
+  const textarea = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  if (!textarea) return;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selected = textarea.value.slice(start, end);
+  const fallback = selected || "文本";
+  let next = "";
+  let cursorStart = start;
+  let cursorEnd = start;
+
+  if (tool === "h1" || tool === "h2" || tool === "h3") {
+    const level = Number(tool.slice(1));
+    next = `${"#".repeat(level)} ${fallback}`;
+    cursorStart = start + level + 1;
+    cursorEnd = cursorStart + fallback.length;
+  } else if (tool === "bold") {
+    next = `**${fallback}**`;
+    cursorStart = start + 2;
+    cursorEnd = cursorStart + fallback.length;
+  } else if (tool === "italic") {
+    next = `*${fallback}*`;
+    cursorStart = start + 1;
+    cursorEnd = cursorStart + fallback.length;
+  } else if (tool === "quote") {
+    next = selected ? selected.split("\n").map((line) => `> ${line}`).join("\n") : "> 引用内容";
+    cursorStart = start + 2;
+    cursorEnd = start + next.length;
+  } else if (tool === "ul") {
+    next = selected ? selected.split("\n").map((line) => `- ${line}`).join("\n") : "- 列表项";
+    cursorStart = start + 2;
+    cursorEnd = start + next.length;
+  } else if (tool === "ol") {
+    next = selected ? selected.split("\n").map((line, index) => `${index + 1}. ${line}`).join("\n") : "1. 列表项";
+    cursorStart = start + 3;
+    cursorEnd = start + next.length;
+  } else if (tool === "inline-code") {
+    next = `\`${fallback}\``;
+    cursorStart = start + 1;
+    cursorEnd = cursorStart + fallback.length;
+  } else if (tool === "code") {
+    next = `\n\`\`\`ts\n${selected || "代码"}\n\`\`\`\n`;
+    cursorStart = start + 7;
+    cursorEnd = cursorStart + (selected || "代码").length;
+  } else if (tool === "link") {
+    next = `[${fallback}](https://)`;
+    cursorStart = start + fallback.length + 3;
+    cursorEnd = cursorStart + 8;
+  } else {
+    return;
+  }
+
+  textarea.setRangeText(next, start, end, "end");
+  textarea.focus();
+  textarea.setSelectionRange(cursorStart, cursorEnd);
+  updateMarkdownPreview(textarea.value);
 }
 
 function renderMarkdownPreview(markdown: string): string {
