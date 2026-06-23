@@ -913,7 +913,7 @@ button:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  color: #5f6674;
+  color: #253044;
   font-size: 13px;
   font-weight: 700;
 }
@@ -922,6 +922,10 @@ button:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 6px 18px rgba(118, 71, 101, 0.08);
   white-space: nowrap;
 }
 
