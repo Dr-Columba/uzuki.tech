@@ -35,6 +35,16 @@ type ApiUser = {
   role: "administrator" | "user";
 };
 
+type ApiUpload = {
+  id: number;
+  path: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  hash?: string | null;
+  createdAt: string | number;
+};
+
 type NavItem = {
   label: string;
   path: string;
@@ -351,6 +361,14 @@ function renderAdminPage(): string {
           <div class="admin-list" data-admin-article-list>正在读取...</div>
         </section>
 
+        <section class="admin-panel media-panel" data-admin-content hidden>
+          <div class="admin-panel-title">
+            <h2>媒体库</h2>
+            <button type="button" data-upload-button>上传图片</button>
+          </div>
+          <div class="media-list" data-admin-media-list>正在读取...</div>
+        </section>
+
         <form class="admin-panel editor-panel" data-admin-content hidden>
           <h2>Markdown 编辑器</h2>
           <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
@@ -363,7 +381,7 @@ function renderAdminPage(): string {
           <div class="editor-actions">
             <button type="button" data-save-draft>保存草稿</button>
             <button type="button" data-publish-article>发布</button>
-            <button type="button" data-upload-button>上传图片</button>
+            <button type="button" data-upload-button>上传并插入正文</button>
           </div>
         </form>
 
@@ -491,6 +509,7 @@ async function checkAdminSession(): Promise<void> {
     if (data.user?.role === "administrator") {
       setAdminAuthenticated(data.user);
       await loadAdminArticles();
+      await loadAdminUploads();
       return;
     }
   } catch {
@@ -516,6 +535,7 @@ async function loginAdmin(): Promise<void> {
     setAdminAuthenticated(data.user);
     showToast("登录成功。");
     await loadAdminArticles();
+    await loadAdminUploads();
   } catch {
     setAdminMessage("登录失败，请检查密码。", "error");
     showToast("登录失败，请检查密码。", "error");
@@ -572,6 +592,40 @@ async function loadAdminArticles(): Promise<void> {
   } catch {
     target.innerHTML = `<p>文章列表读取失败，请确认后端已启动并已登录。</p>`;
   }
+}
+
+async function loadAdminUploads(): Promise<void> {
+  const target = document.querySelector<HTMLElement>("[data-admin-media-list]");
+  if (!target) return;
+  target.textContent = "正在读取...";
+
+  try {
+    const response = await fetch("/api/admin/uploads", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to load uploads");
+    const data = (await response.json()) as { uploads?: ApiUpload[] };
+    const uploads = data.uploads ?? [];
+    target.innerHTML = uploads.length
+      ? uploads.map(renderMediaItem).join("")
+      : `<p>还没有上传图片。上传后会出现在这里，可复用为封面或正文图片。</p>`;
+  } catch {
+    target.innerHTML = `<p>媒体库读取失败，请确认后端已启动并已登录。</p>`;
+  }
+}
+
+function renderMediaItem(upload: ApiUpload): string {
+  return `
+    <article class="media-item">
+      <img src="${escapeHtml(upload.path)}" alt="${escapeHtml(upload.originalName)}" loading="lazy" />
+      <div>
+        <strong title="${escapeHtml(upload.originalName)}">${escapeHtml(upload.originalName)}</strong>
+        <small>${formatBytes(upload.size)} · ${formatDate(upload.createdAt)}</small>
+        <div class="media-actions">
+          <button type="button" data-media-cover="${escapeHtml(upload.path)}">设为封面</button>
+          <button type="button" data-media-insert="${escapeHtml(upload.path)}" data-media-name="${escapeHtml(upload.originalName)}">插入正文</button>
+        </div>
+      </div>
+    </article>
+  `;
 }
 
 async function saveArticle(status: "draft" | "published"): Promise<void> {
@@ -642,7 +696,7 @@ async function uploadAdminImage(file: File): Promise<void> {
       body: formData,
     });
     if (!response.ok) throw new Error("Upload failed");
-    const data = (await response.json()) as { upload?: { path: string } };
+    const data = (await response.json()) as { upload?: ApiUpload; reused?: boolean };
     const path = data.upload?.path;
     if (!path) throw new Error("Upload path missing");
     const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
@@ -652,14 +706,31 @@ async function uploadAdminImage(file: File): Promise<void> {
       markdownInput.value = `${markdownInput.value.trim()}\n\n![${file.name}](${path})`.trim();
       updateMarkdownPreview(markdownInput.value);
     }
-    setAdminMessage("图片已上传，并已插入正文。");
-    showToast("图片已上传，并已插入正文。");
+    await loadAdminUploads();
+    const message = data.reused ? "图片已存在，已复用并插入正文。" : "图片已上传，并已插入正文。";
+    setAdminMessage(message);
+    showToast(message);
   } catch {
     setAdminMessage("图片上传失败，请确认已登录且文件小于 5MB。", "error");
     showToast("图片上传失败，请确认已登录且文件小于 5MB。", "error");
   } finally {
     setUploadBusy(false);
   }
+}
+
+function setCoverImage(path: string): void {
+  const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
+  if (!coverInput || !path) return;
+  coverInput.value = path;
+  showToast("已设为封面图。");
+}
+
+function insertImageIntoArticle(path: string, name = "image"): void {
+  const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  if (!markdownInput || !path) return;
+  markdownInput.value = `${markdownInput.value.trim()}\n\n![${name}](${path})`.trim();
+  updateMarkdownPreview(markdownInput.value);
+  showToast("已插入正文。");
 }
 
 function setAdminButtonsBusy(isBusy: boolean): void {
@@ -716,6 +787,20 @@ function handleInteractiveClick(event: MouseEvent): void {
   if (target.closest("[data-upload-button]")) {
     event.preventDefault();
     document.querySelector<HTMLInputElement>("[data-upload-file]")?.click();
+    return;
+  }
+
+  const coverButton = target.closest<HTMLButtonElement>("[data-media-cover]");
+  if (coverButton) {
+    event.preventDefault();
+    setCoverImage(coverButton.dataset.mediaCover ?? "");
+    return;
+  }
+
+  const insertButton = target.closest<HTMLButtonElement>("[data-media-insert]");
+  if (insertButton) {
+    event.preventDefault();
+    insertImageIntoArticle(insertButton.dataset.mediaInsert ?? "", insertButton.dataset.mediaName ?? "image");
     return;
   }
 
@@ -813,6 +898,12 @@ function formatDate(value: string | number | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
   return date.toISOString().slice(0, 10);
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function stripHtml(value: string): string {
