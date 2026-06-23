@@ -751,8 +751,11 @@ button:focus-visible,
 
 .article-content em,
 .markdown-preview em {
+  display: inline-block;
   color: #6f5b7d;
-  font-style: italic;
+  font-style: normal;
+  transform: skewX(-10deg);
+  transform-origin: center;
   background: rgba(127, 200, 255, 0.12);
   border-radius: 6px;
   padding: 0 3px;
