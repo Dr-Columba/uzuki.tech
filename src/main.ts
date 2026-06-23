@@ -1141,16 +1141,115 @@ function renderMarkdownPreview(markdown: string): string {
     (_match, src: string) => `<iframe class="embed-preview" src="https:${src}" loading="lazy" allowfullscreen></iframe>`,
   );
 
-  return withIframe
-    .split(/\n{2,}/)
-    .map((block) => {
-      if (block.startsWith("# ")) return `<h1>${block.slice(2)}</h1>`;
-      if (block.startsWith("## ")) return `<h2>${block.slice(3)}</h2>`;
-      const imageBlock = block.match(/^!\[(.*?)\]\((.*?)\)$/);
-      if (imageBlock) return `<img src="${imageBlock[2]}" alt="${imageBlock[1]}" loading="lazy" />`;
-      return `<p>${block.replace(/\n/g, "<br />")}</p>`;
-    })
-    .join("");
+  const lines = withIframe.split("\n");
+  const html: string[] = [];
+  let paragraph: string[] = [];
+  let list: { type: "ul" | "ol"; items: string[] } | null = null;
+  let code: string[] | null = null;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${paragraph.map(renderInlineMarkdown).join("<br />")}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    html.push(`<${list.type}>${list.items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${list.type}>`);
+    list = null;
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (code) {
+        html.push(`<pre><code>${code.join("\n")}</code></pre>`);
+        code = null;
+      } else {
+        flushParagraph();
+        flushList();
+        code = [];
+      }
+      continue;
+    }
+    if (code) {
+      code.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    if (trimmed.startsWith("<iframe ")) {
+      flushParagraph();
+      flushList();
+      html.push(trimmed);
+      continue;
+    }
+
+    const imageBlock = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+    if (imageBlock) {
+      flushParagraph();
+      flushList();
+      html.push(`<img src="${imageBlock[2]}" alt="${imageBlock[1]}" loading="lazy" />`);
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      html.push(`<h${heading[1].length}>${renderInlineMarkdown(heading[2])}</h${heading[1].length}>`);
+      continue;
+    }
+
+    const quote = trimmed.match(/^>\s+(.+)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      html.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
+      continue;
+    }
+
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      if (!list || list.type !== "ul") {
+        flushList();
+        list = { type: "ul", items: [] };
+      }
+      list.items.push(unordered[1]);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      if (!list || list.type !== "ol") {
+        flushList();
+        list = { type: "ol", items: [] };
+      }
+      list.items.push(ordered[1]);
+      continue;
+    }
+
+    flushList();
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  if (code) html.push(`<pre><code>${code.join("\n")}</code></pre>`);
+  return html.join("");
+}
+
+function renderInlineMarkdown(value: string): string {
+  return value
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
 }
 
 function navigate(path: string): void {
