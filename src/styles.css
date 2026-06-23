@@ -638,6 +638,71 @@ button:focus-visible,
   line-height: 1.8;
 }
 
+.article-shell {
+  width: min(920px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 118px 0 72px;
+}
+
+.article-back {
+  display: inline-flex;
+  margin-bottom: 20px;
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: #d94682;
+  background: rgba(255, 120, 172, 0.12);
+  font-weight: 700;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.article-back:hover {
+  color: #fff;
+  background: var(--accent);
+  transform: translateY(-2px);
+}
+
+.article-cover {
+  width: 100%;
+  max-height: 460px;
+  display: block;
+  margin-bottom: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: var(--shadow);
+}
+
+.article-shell h1 {
+  margin: 8px 0 14px;
+  color: var(--ink);
+  font-size: clamp(34px, 6vw, 62px);
+  line-height: 1.12;
+}
+
+.article-meta {
+  margin: 0 0 28px;
+  color: var(--muted);
+}
+
+.article-content {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: clamp(22px, 4vw, 38px);
+  color: #3d4554;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  line-height: 1.9;
+}
+
+.article-content img,
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.article-empty {
+  margin-top: 118px;
+}
+
 .admin-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -682,6 +747,22 @@ button:focus-visible,
   padding: 22px;
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+.admin-panel[hidden] {
+  display: none;
+}
+
+.admin-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.admin-panel-title h2 {
+  margin: 0;
 }
 
 .admin-panel h2 {
@@ -735,6 +816,44 @@ button:focus-visible,
 .admin-panel button:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(255, 120, 172, 0.24);
+}
+
+.admin-message {
+  min-height: 22px;
+  margin: 14px 0 0;
+  color: #6f7580;
+  line-height: 1.6;
+}
+
+.admin-message.error {
+  color: #d94682;
+}
+
+.admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-list p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.admin-list-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(255, 120, 172, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  text-align: left;
+}
+
+.admin-list-item small {
+  color: var(--muted);
 }
 
 .editor-panel,

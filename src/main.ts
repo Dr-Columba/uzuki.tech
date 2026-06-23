@@ -1,6 +1,8 @@
 import "./styles.css";
 
 type Post = {
+  id?: number;
+  slug?: string;
   title: string;
   category: string;
   date: string;
@@ -9,6 +11,28 @@ type Post = {
   excerpt: string;
   image?: string;
   featured?: boolean;
+  html?: string;
+};
+
+type ApiArticle = {
+  id: number;
+  slug: string;
+  title: string;
+  category: string;
+  summary: string;
+  coverImage: string | null;
+  markdown: string;
+  html: string;
+  status: "draft" | "published";
+  createdAt: string | number;
+  updatedAt: string | number;
+  publishedAt: string | number | null;
+};
+
+type ApiUser = {
+  id: number;
+  username: string;
+  role: "administrator" | "user";
 };
 
 type NavItem = {
@@ -59,7 +83,7 @@ const placeholderPages: Record<string, { title: string; eyebrow: string; descrip
   },
 };
 
-const posts: Post[] = [
+const fallbackPosts: Post[] = [
   {
     title: "迁移记录：从 WordPress 到新的卯月科技",
     category: "公告",
@@ -94,26 +118,8 @@ const posts: Post[] = [
     date: "2026-06-12",
     views: "706",
     comments: 6,
-    excerpt: "樱花、鼠标轨迹和桌宠都可以有，但需要可关闭、低消耗，并尊重系统的减少动态效果设置。",
+    excerpt: "樱花、鼠标轨迹和桌宠都可以有，但需要低消耗，并尊重系统的减少动态效果设置。",
     image: "/assets/images/post-2.jpg",
-  },
-  {
-    title: "旧相册整理：一些值得留在首页的瞬间",
-    category: "相册",
-    date: "2026-06-05",
-    views: "1.8k",
-    comments: 15,
-    excerpt: "从旧 WordPress 媒体库中挑出适合展示的轻量缩略图，避免直接使用数 MB 原图拖慢加载。",
-    image: "/assets/images/post-5.jpg",
-  },
-  {
-    title: "待办：评论、搜索、归档与管理后台",
-    category: "路线图",
-    date: "2026-06-01",
-    views: "520",
-    comments: 3,
-    excerpt: "当前版本先完成视觉和静态结构，之后可接入 REST API、Markdown/MDX 或轻量数据库。",
-    image: "/assets/images/post-6.jpg",
   },
 ];
 
@@ -144,7 +150,7 @@ app.innerHTML = `
   <main id="page-root"></main>
 
   <footer class="site-footer">
-    <p>© 2026 卯月科技 | Static frontend with Bun/Hono backend reserved.</p>
+    <p>© 2026 卯月科技 | Static frontend with Bun/Hono backend.</p>
   </footer>
 
   <div class="search-modal" data-search-modal hidden>
@@ -204,6 +210,7 @@ pet?.addEventListener("click", () => pet.classList.add("is-hidden"));
 document.addEventListener("click", handleInteractiveClick);
 document.addEventListener("keydown", handleInteractiveKeydown);
 document.addEventListener("input", handleAdminPreview);
+document.addEventListener("change", handleAdminUploadChange);
 
 if (!reducedMotion) {
   installMouseTrail();
@@ -219,6 +226,13 @@ function renderRoute(): void {
   if (path === "/admin") {
     pageRoot.innerHTML = renderAdminPage();
     checkApiStatus();
+    checkAdminSession();
+    return;
+  }
+
+  if (path.startsWith("/articles/")) {
+    pageRoot.innerHTML = renderArticleLoading();
+    loadArticle(decodeURIComponent(path.replace("/articles/", "")));
     return;
   }
 
@@ -230,6 +244,7 @@ function renderRoute(): void {
   pageRoot.innerHTML = renderHomePage();
   installWave();
   fetchHitokoto();
+  loadPublishedArticles();
 }
 
 function setActiveNav(path: string): void {
@@ -261,11 +276,9 @@ function renderHomePage(): string {
     </section>
 
     <section class="content-shell" id="posts">
-      <div class="post-column" aria-label="文章列表">
-        ${posts.map(renderPost).join("")}
-        <nav class="pagination" aria-label="分页">
-          <a class="active" href="#">1</a><a href="#">2</a><a href="#">3</a><span>...</span><a href="#">尾页</a>
-        </nav>
+      <div class="post-column" aria-label="文章列表" data-post-column>
+        ${fallbackPosts.map(renderPost).join("")}
+        ${renderPagination()}
       </div>
 
       <aside class="sidebar" id="about" aria-label="侧边栏">
@@ -284,7 +297,7 @@ function renderHomePage(): string {
         <section class="side-panel">
           <h2>标签</h2>
           <div class="tag-cloud">
-            ${tags.map((tag) => `<a href="#">${tag}</a>`).join("")}
+            ${tags.map((tag) => `<a href="#" data-static-action>${tag}</a>`).join("")}
           </div>
         </section>
       </aside>
@@ -315,33 +328,45 @@ function renderAdminPage(): string {
         <div>
           <span>Admin</span>
           <h1>后台管理</h1>
-          <p>隐藏入口页面，用于后续文章发布、图片上传、嵌入预览和评论管理。</p>
+          <p>隐藏入口页面，用于文章发布、图片上传、嵌入预览和后续评论管理。</p>
         </div>
         <div class="api-status" data-api-status>API: checking...</div>
       </header>
 
       <section class="admin-grid">
-        <form class="admin-panel" data-static-action>
-          <h2>登录占位</h2>
-          <label>用户名<input type="text" value="administrator" autocomplete="username" /></label>
-          <label>密码<input type="password" placeholder="部署后使用本地生成的强密码" autocomplete="current-password" /></label>
-          <button type="button">登录</button>
+        <form class="admin-panel" data-admin-login>
+          <h2>登录</h2>
+          <label>用户名<input type="text" value="administrator" autocomplete="username" data-login-username /></label>
+          <label>密码<input type="password" placeholder="本地生成的 administrator 密码" autocomplete="current-password" data-login-password /></label>
+          <button type="button" data-login-button>登录</button>
+          <p class="admin-message" data-admin-message></p>
         </form>
 
-        <form class="admin-panel editor-panel" data-static-action>
-          <h2>Markdown 编辑器占位</h2>
-          <label>标题<input type="text" placeholder="文章标题" /></label>
-          <label>Slug<input type="text" placeholder="article-slug" /></label>
-          <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" /></label>
-          <label>正文<textarea data-md-source rows="12" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
+        <section class="admin-panel admin-list-panel" data-admin-content hidden>
+          <div class="admin-panel-title">
+            <h2>文章</h2>
+            <button type="button" data-logout-button>退出</button>
+          </div>
+          <div class="admin-list" data-admin-article-list>正在读取...</div>
+        </section>
+
+        <form class="admin-panel editor-panel" data-admin-content hidden>
+          <h2>Markdown 编辑器</h2>
+          <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
+          <label>Slug<input type="text" placeholder="article-slug" data-article-slug /></label>
+          <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
+          <label>摘要<textarea rows="3" placeholder="首页文章摘要" data-article-summary></textarea></label>
+          <label>封面图<input type="text" placeholder="/api/uploads/..." data-article-cover /></label>
+          <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
+          <input type="file" accept="image/*" data-upload-file hidden />
           <div class="editor-actions">
-            <button type="button">保存草稿</button>
-            <button type="button">发布</button>
-            <button type="button">上传图片</button>
+            <button type="button" data-save-draft>保存草稿</button>
+            <button type="button" data-publish-article>发布</button>
+            <button type="button" data-upload-button>上传图片</button>
           </div>
         </form>
 
-        <section class="admin-panel preview-panel">
+        <section class="admin-panel preview-panel" data-admin-content hidden>
           <h2>预览</h2>
           <div class="markdown-preview" data-md-preview>输入 Markdown 后这里会显示预览。</div>
         </section>
@@ -352,15 +377,21 @@ function renderAdminPage(): string {
 
 function renderPost(post: Post): string {
   const className = post.featured ? "post-card featured" : "post-card";
+  const href = post.slug ? `/articles/${encodeURIComponent(post.slug)}` : "#";
+  const routeAttr = post.slug ? "data-route" : "";
   return `
     <article class="${className}" role="button" tabindex="0" data-static-action>
-      ${post.image ? `<a class="post-image" href="#"><img src="${post.image}" alt="" loading="lazy" width="1024" height="659" /></a>` : ""}
+      ${
+        post.image
+          ? `<a class="post-image" href="${href}" ${routeAttr}><img src="${escapeHtml(post.image)}" alt="" loading="lazy" width="1024" height="659" /></a>`
+          : ""
+      }
       <div class="post-body">
-        <a class="category" href="#">${post.category}</a>
-        <h2><a href="#">${post.title}</a></h2>
-        <p>${post.excerpt}</p>
+        <a class="category" href="#" data-static-action>${escapeHtml(post.category)}</a>
+        <h2><a href="${href}" ${routeAttr}>${escapeHtml(post.title)}</a></h2>
+        <p>${escapeHtml(post.excerpt)}</p>
         <div class="post-meta">
-          <span>${post.date}</span>
+          <span>${escapeHtml(post.date)}</span>
           <span>${post.views} views</span>
           <span>${post.comments} comments</span>
         </div>
@@ -369,18 +400,288 @@ function renderPost(post: Post): string {
   `;
 }
 
+function renderPagination(): string {
+  return `
+    <nav class="pagination" aria-label="分页">
+      <a class="active" href="#">1</a><a href="#">2</a><a href="#">3</a><span>...</span><a href="#">尾页</a>
+    </nav>
+  `;
+}
+
+function renderArticleLoading(): string {
+  return `
+    <section class="article-shell">
+      <p class="eyebrow">Article</p>
+      <h1>文章读取中</h1>
+      <p class="article-meta">正在从后端获取内容...</p>
+    </section>
+  `;
+}
+
+function renderArticle(article: ApiArticle): string {
+  return `
+    <article class="article-shell">
+      <a class="article-back" href="/" data-route>返回首页</a>
+      ${article.coverImage ? `<img class="article-cover" src="${escapeHtml(article.coverImage)}" alt="" />` : ""}
+      <p class="eyebrow">${escapeHtml(article.category)}</p>
+      <h1>${escapeHtml(article.title)}</h1>
+      <p class="article-meta">${formatDate(article.publishedAt ?? article.updatedAt)}</p>
+      <div class="article-content">${article.html || renderMarkdownPreview(article.markdown)}</div>
+    </article>
+  `;
+}
+
+async function loadPublishedArticles(): Promise<void> {
+  const column = document.querySelector<HTMLElement>("[data-post-column]");
+  if (!column) return;
+
+  try {
+    const response = await fetch("/api/articles");
+    if (!response.ok) throw new Error("Failed to load articles");
+    const data = (await response.json()) as { articles?: ApiArticle[] };
+    if (!data.articles?.length) return;
+    const posts = data.articles.map((article, index) => apiArticleToPost(article, index === 0));
+    column.innerHTML = `${posts.map(renderPost).join("")}${renderPagination()}`;
+  } catch {
+    // Keep static fallback posts when the backend is not available.
+  }
+}
+
+async function loadArticle(slug: string): Promise<void> {
+  if (!pageRoot) return;
+  try {
+    const response = await fetch(`/api/articles/${encodeURIComponent(slug)}`);
+    if (!response.ok) throw new Error("Not found");
+    const data = (await response.json()) as { article?: ApiArticle };
+    if (!data.article) throw new Error("Not found");
+    pageRoot.innerHTML = renderArticle(data.article);
+  } catch {
+    pageRoot.innerHTML = `
+      <section class="empty-state article-empty">
+        <h2>文章不存在或尚未发布</h2>
+        <p>请确认链接是否正确，草稿文章不会出现在公开页面。</p>
+        <p><a href="/" data-route>返回首页</a></p>
+      </section>
+    `;
+  }
+}
+
+function apiArticleToPost(article: ApiArticle, featured = false): Post {
+  return {
+    id: article.id,
+    slug: article.slug,
+    title: article.title,
+    category: article.category,
+    date: formatDate(article.publishedAt ?? article.updatedAt),
+    views: "0",
+    comments: 0,
+    excerpt: article.summary || stripHtml(article.html).slice(0, 96),
+    image: article.coverImage || "/assets/images/post-1.jpg",
+    featured,
+    html: article.html,
+  };
+}
+
+async function checkAdminSession(): Promise<void> {
+  try {
+    const response = await fetch("/api/admin/me", { credentials: "include" });
+    if (!response.ok) throw new Error("Session unavailable");
+    const data = (await response.json()) as { user?: ApiUser | null };
+    if (data.user?.role === "administrator") {
+      setAdminAuthenticated(data.user);
+      await loadAdminArticles();
+      return;
+    }
+  } catch {
+    // The login form remains visible when there is no active session.
+  }
+  setAdminMessage("请输入 administrator 密码登录。");
+}
+
+async function loginAdmin(): Promise<void> {
+  const username = document.querySelector<HTMLInputElement>("[data-login-username]")?.value.trim() ?? "";
+  const password = document.querySelector<HTMLInputElement>("[data-login-password]")?.value ?? "";
+  setAdminMessage("正在登录...");
+
+  try {
+    const response = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) throw new Error("登录失败");
+    const data = (await response.json()) as { user: ApiUser };
+    setAdminAuthenticated(data.user);
+    await loadAdminArticles();
+  } catch {
+    setAdminMessage("登录失败，请检查密码。", "error");
+  }
+}
+
+async function logoutAdmin(): Promise<void> {
+  await fetch("/api/admin/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
+  document.querySelector<HTMLFormElement>("[data-admin-login]")?.removeAttribute("hidden");
+  document.querySelectorAll<HTMLElement>("[data-admin-content]").forEach((element) => {
+    element.hidden = true;
+  });
+  setAdminMessage("已退出登录。");
+}
+
+function setAdminAuthenticated(user: ApiUser): void {
+  document.querySelector<HTMLFormElement>("[data-admin-login]")?.setAttribute("hidden", "true");
+  document.querySelectorAll<HTMLElement>("[data-admin-content]").forEach((element) => {
+    element.hidden = false;
+  });
+  setAdminMessage(`已登录：${user.username}`);
+}
+
+function setAdminMessage(message: string, type: "info" | "error" = "info"): void {
+  const target = document.querySelector<HTMLElement>("[data-admin-message]");
+  if (!target) return;
+  target.textContent = message;
+  target.classList.toggle("error", type === "error");
+}
+
+async function loadAdminArticles(): Promise<void> {
+  const target = document.querySelector<HTMLElement>("[data-admin-article-list]");
+  if (!target) return;
+  target.textContent = "正在读取...";
+
+  try {
+    const response = await fetch("/api/admin/articles", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to load admin articles");
+    const data = (await response.json()) as { articles?: ApiArticle[] };
+    const articles = data.articles ?? [];
+    target.innerHTML = articles.length
+      ? articles
+          .map(
+            (article) => `
+              <button type="button" class="admin-list-item" data-static-action>
+                <span>${escapeHtml(article.title)}</span>
+                <small>${article.status === "published" ? "已发布" : "草稿"} · ${formatDate(article.updatedAt)}</small>
+              </button>
+            `,
+          )
+          .join("")
+      : `<p>还没有文章。可以先在右侧编辑器保存一篇草稿或发布一篇文章。</p>`;
+  } catch {
+    target.innerHTML = `<p>文章列表读取失败，请确认后端已启动并已登录。</p>`;
+  }
+}
+
+async function saveArticle(status: "draft" | "published"): Promise<void> {
+  const titleInput = document.querySelector<HTMLInputElement>("[data-article-title]");
+  const slugInput = document.querySelector<HTMLInputElement>("[data-article-slug]");
+  const categoryInput = document.querySelector<HTMLInputElement>("[data-article-category]");
+  const summaryInput = document.querySelector<HTMLTextAreaElement>("[data-article-summary]");
+  const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
+  const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+
+  const title = titleInput?.value.trim() ?? "";
+  const slug = normalizeSlug(slugInput?.value || title);
+  const category = categoryInput?.value.trim() || "手记";
+  const markdown = markdownInput?.value ?? "";
+
+  if (!title || !slug || !markdown.trim()) {
+    setAdminMessage("标题、Slug 和正文不能为空。", "error");
+    return;
+  }
+
+  setAdminMessage(status === "published" ? "正在发布..." : "正在保存草稿...");
+
+  try {
+    const response = await fetch("/api/admin/articles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        title,
+        slug,
+        category,
+        summary: summaryInput?.value.trim() ?? "",
+        coverImage: coverInput?.value.trim() ?? "",
+        markdown,
+        status,
+      }),
+    });
+    if (!response.ok) throw new Error("Save failed");
+    const data = (await response.json()) as { article: ApiArticle };
+    slugInput!.value = data.article.slug;
+    setAdminMessage(status === "published" ? "文章已发布。" : "草稿已保存。");
+    await loadAdminArticles();
+    if (status === "published") await loadPublishedArticles();
+  } catch {
+    setAdminMessage("保存失败。Slug 可能已存在，或登录状态已过期。", "error");
+  }
+}
+
+async function uploadAdminImage(file: File): Promise<void> {
+  setAdminMessage("正在上传图片...");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await fetch("/api/admin/uploads", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    if (!response.ok) throw new Error("Upload failed");
+    const data = (await response.json()) as { upload?: { path: string } };
+    const path = data.upload?.path;
+    if (!path) throw new Error("Upload path missing");
+    const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
+    const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+    if (coverInput && !coverInput.value) coverInput.value = path;
+    if (markdownInput) {
+      markdownInput.value = `${markdownInput.value.trim()}\n\n![${file.name}](${path})`.trim();
+      updateMarkdownPreview(markdownInput.value);
+    }
+    setAdminMessage("图片已上传，并已插入正文。");
+  } catch {
+    setAdminMessage("图片上传失败，请确认已登录且文件小于 5MB。", "error");
+  }
+}
+
 function handleInteractiveClick(event: MouseEvent): void {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
+  if (target.closest("[data-login-button]")) {
+    event.preventDefault();
+    void loginAdmin();
+    return;
+  }
+
+  if (target.closest("[data-logout-button]")) {
+    event.preventDefault();
+    void logoutAdmin();
+    return;
+  }
+
+  if (target.closest("[data-save-draft]")) {
+    event.preventDefault();
+    void saveArticle("draft");
+    return;
+  }
+
+  if (target.closest("[data-publish-article]")) {
+    event.preventDefault();
+    void saveArticle("published");
+    return;
+  }
+
+  if (target.closest("[data-upload-button]")) {
+    event.preventDefault();
+    document.querySelector<HTMLInputElement>("[data-upload-file]")?.click();
+    return;
+  }
+
   const routeLink = target.closest<HTMLAnchorElement>("a[data-route]");
   if (routeLink) {
     event.preventDefault();
-    history.pushState({}, "", routeLink.pathname);
-    navLinks?.classList.remove("is-open");
-    menuButton?.classList.remove("is-open");
-    renderRoute();
-    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+    navigate(routeLink.pathname);
     return;
   }
 
@@ -412,9 +713,22 @@ function handleInteractiveKeydown(event: KeyboardEvent): void {
 function handleAdminPreview(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLTextAreaElement) || !target.matches("[data-md-source]")) return;
+  updateMarkdownPreview(target.value);
+}
+
+function handleAdminUploadChange(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || !target.matches("[data-upload-file]")) return;
+  const file = target.files?.[0];
+  if (!file) return;
+  void uploadAdminImage(file);
+  target.value = "";
+}
+
+function updateMarkdownPreview(markdown: string): void {
   const preview = document.querySelector<HTMLElement>("[data-md-preview]");
   if (!preview) return;
-  preview.innerHTML = renderMarkdownPreview(target.value);
+  preview.innerHTML = renderMarkdownPreview(markdown);
 }
 
 function renderMarkdownPreview(markdown: string): string {
@@ -423,10 +737,45 @@ function renderMarkdownPreview(markdown: string): string {
     /&lt;iframe\s+[^&]*src=&quot;(\/\/player\.bilibili\.com\/player\.html\?.+?)&quot;[^&]*&gt;&lt;\/iframe&gt;/g,
     (_match, src: string) => `<iframe class="embed-preview" src="https:${src}" loading="lazy" allowfullscreen></iframe>`,
   );
+
   return withIframe
     .split(/\n{2,}/)
-    .map((block) => `<p>${block.replace(/\n/g, "<br />")}</p>`)
+    .map((block) => {
+      if (block.startsWith("# ")) return `<h1>${block.slice(2)}</h1>`;
+      if (block.startsWith("## ")) return `<h2>${block.slice(3)}</h2>`;
+      const imageBlock = block.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imageBlock) return `<img src="${imageBlock[2]}" alt="${imageBlock[1]}" loading="lazy" />`;
+      return `<p>${block.replace(/\n/g, "<br />")}</p>`;
+    })
     .join("");
+}
+
+function navigate(path: string): void {
+  history.pushState({}, "", path);
+  navLinks?.classList.remove("is-open");
+  menuButton?.classList.remove("is-open");
+  renderRoute();
+  window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+}
+
+function normalizeSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+}
+
+function formatDate(value: string | number | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 }
 
 function escapeHtml(value: string): string {
