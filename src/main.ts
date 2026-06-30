@@ -443,7 +443,7 @@ function renderAdminPage(): string {
           </div>
         </section>
 
-        <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" hidden>
+        <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" data-article-editor hidden>
           <div class="admin-panel-title">
             <h2>Markdown 编辑器</h2>
             <button type="button" data-new-article>新建文章</button>
@@ -747,7 +747,7 @@ async function loadAdminArticles(): Promise<void> {
 
 function renderArticleLedgerRow(article: ApiArticle): string {
   return `
-    <article class="ledger-row" data-article-id="${article.id}" data-article-slug="${escapeHtml(article.slug)}" role="row">
+    <article class="ledger-row" data-article-id="${article.id}" data-ledger-article-slug="${escapeHtml(article.slug)}" role="row">
       <div class="ledger-main">
         <strong>${escapeHtml(article.title)}</strong>
         <small>${escapeHtml(article.slug)} · ${escapeHtml(article.category)} · ${article.status === "published" ? "已发布" : "草稿"} · ${formatDate(article.updatedAt)}</small>
@@ -924,14 +924,24 @@ function renderMediaItem(upload: ApiUpload): string {
   `;
 }
 
+function getArticleEditor(): HTMLFormElement | null {
+  return document.querySelector<HTMLFormElement>("[data-article-editor]");
+}
+
 async function saveArticle(status: "draft" | "published"): Promise<void> {
-  const titleInput = document.querySelector<HTMLInputElement>("[data-article-title]");
-  const slugInput = document.querySelector<HTMLInputElement>("[data-article-slug]");
-  const categoryInput = document.querySelector<HTMLInputElement>("[data-article-category]");
-  const tagsInput = document.querySelector<HTMLInputElement>("[data-article-tags]");
-  const summaryInput = document.querySelector<HTMLTextAreaElement>("[data-article-summary]");
-  const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
-  const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  const editor = getArticleEditor();
+  if (!editor) {
+    showToast("编辑器未正确加载，请刷新页面后重试。", "error");
+    return;
+  }
+
+  const titleInput = editor.querySelector<HTMLInputElement>("[data-article-title]");
+  const slugInput = editor.querySelector<HTMLInputElement>("[data-article-slug]");
+  const categoryInput = editor.querySelector<HTMLInputElement>("[data-article-category]");
+  const tagsInput = editor.querySelector<HTMLInputElement>("[data-article-tags]");
+  const summaryInput = editor.querySelector<HTMLTextAreaElement>("[data-article-summary]");
+  const coverInput = editor.querySelector<HTMLInputElement>("[data-article-cover]");
+  const markdownInput = editor.querySelector<HTMLTextAreaElement>("[data-md-source]");
 
   const title = titleInput?.value.trim() ?? "";
   const slugValue = slugInput?.value.trim() ?? "";
@@ -1030,8 +1040,9 @@ async function uploadAdminImage(file: File): Promise<void> {
     const data = (await response.json()) as { upload?: ApiUpload; reused?: boolean };
     const path = data.upload?.path;
     if (!path) throw new Error("Upload path missing");
-    const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
-    const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+    const editor = getArticleEditor();
+    const coverInput = editor?.querySelector<HTMLInputElement>("[data-article-cover]");
+    const markdownInput = editor?.querySelector<HTMLTextAreaElement>("[data-md-source]");
     if (coverInput && !coverInput.value) coverInput.value = path;
     if (markdownInput) {
       markdownInput.value = `${markdownInput.value.trim()}\n\n![${file.name}](${path})`.trim();
@@ -1096,15 +1107,21 @@ async function moveArticle(id: number, direction: "up" | "down"): Promise<void> 
 }
 
 function fillArticleEditor(article: ApiArticle): void {
+  const editor = getArticleEditor();
+  if (!editor) {
+    showToast("编辑器未正确加载，请刷新页面后重试。", "error");
+    return;
+  }
+
   editingArticleId = article.id;
-  document.querySelector<HTMLInputElement>("[data-article-title]")!.value = article.title;
-  document.querySelector<HTMLInputElement>("[data-article-slug]")!.value = article.slug;
-  document.querySelector<HTMLInputElement>("[data-article-category]")!.value = article.category;
-  document.querySelector<HTMLInputElement>("[data-article-tags]")!.value = (article.tags ?? []).join(", ");
-  document.querySelector<HTMLTextAreaElement>("[data-article-summary]")!.value = article.summary;
-  document.querySelector<HTMLInputElement>("[data-article-cover]")!.value = article.coverImage ?? "";
-  document.querySelector<HTMLTextAreaElement>("[data-md-source]")!.value = article.markdown;
-  const state = document.querySelector<HTMLElement>("[data-editor-state]");
+  editor.querySelector<HTMLInputElement>("[data-article-title]")!.value = article.title;
+  editor.querySelector<HTMLInputElement>("[data-article-slug]")!.value = article.slug;
+  editor.querySelector<HTMLInputElement>("[data-article-category]")!.value = article.category;
+  editor.querySelector<HTMLInputElement>("[data-article-tags]")!.value = (article.tags ?? []).join(", ");
+  editor.querySelector<HTMLTextAreaElement>("[data-article-summary]")!.value = article.summary;
+  editor.querySelector<HTMLInputElement>("[data-article-cover]")!.value = article.coverImage ?? "";
+  editor.querySelector<HTMLTextAreaElement>("[data-md-source]")!.value = article.markdown;
+  const state = editor.querySelector<HTMLElement>("[data-editor-state]");
   if (state) state.textContent = `当前：编辑 #${article.id} · ${article.status === "published" ? "已发布" : "草稿"}`;
   updateMarkdownPreview(article.markdown);
 }
@@ -1125,14 +1142,14 @@ function switchAdminSection(section: "articles" | "editor" | "media" | "system")
 }
 
 function setCoverImage(path: string): void {
-  const coverInput = document.querySelector<HTMLInputElement>("[data-article-cover]");
+  const coverInput = getArticleEditor()?.querySelector<HTMLInputElement>("[data-article-cover]");
   if (!coverInput || !path) return;
   coverInput.value = path;
   showToast("已设为封面图。");
 }
 
 function insertImageIntoArticle(path: string, name = "image"): void {
-  const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  const markdownInput = getArticleEditor()?.querySelector<HTMLTextAreaElement>("[data-md-source]");
   if (!markdownInput || !path) return;
   markdownInput.value = `${markdownInput.value.trim()}\n\n![${name}](${path})`.trim();
   updateMarkdownPreview(markdownInput.value);
@@ -1167,14 +1184,14 @@ function setUploadBusy(isBusy: boolean): void {
 
 function clearArticleEditor(): void {
   editingArticleId = null;
-  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+  getArticleEditor()?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
     "[data-article-title], [data-article-slug], [data-article-category], [data-article-tags], [data-article-summary], [data-article-cover], [data-md-source]",
   ).forEach((field) => {
     field.value = "";
     field.removeAttribute("aria-invalid");
     field.classList.remove("validation-pulse");
   });
-  const state = document.querySelector<HTMLElement>("[data-editor-state]");
+  const state = getArticleEditor()?.querySelector<HTMLElement>("[data-editor-state]");
   if (state) state.textContent = "当前：新建文章";
   updateMarkdownPreview("");
 }
@@ -1248,8 +1265,8 @@ function handleInteractiveClick(event: MouseEvent): void {
     const id = Number(articleAction.dataset.articleId);
     const action = articleAction.dataset.articleAction;
     if (action === "view") {
-      const row = articleAction.closest<HTMLElement>("[data-article-slug]");
-      const slug = row?.dataset.articleSlug;
+      const row = articleAction.closest<HTMLElement>("[data-ledger-article-slug]");
+      const slug = row?.dataset.ledgerArticleSlug;
       if (slug) navigate(`/articles/${encodeURIComponent(slug)}`);
       return;
     }
@@ -1372,7 +1389,7 @@ function updateMarkdownPreview(markdown: string): void {
 }
 
 function insertMarkdown(tool: string): void {
-  const textarea = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  const textarea = getArticleEditor()?.querySelector<HTMLTextAreaElement>("[data-md-source]");
   if (!textarea) return;
 
   const start = textarea.selectionStart;
