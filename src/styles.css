@@ -1551,6 +1551,27 @@ button:focus-visible,
   box-shadow: 0 10px 24px rgba(255, 120, 172, 0.22);
 }
 
+.markdown-toolbar .markdown-code-language {
+  width: 58px;
+  min-width: 58px;
+  height: 34px;
+  border: 1px solid rgba(255, 120, 172, 0.2);
+  border-radius: 10px;
+  padding: 0 22px 0 8px;
+  color: #d94682;
+  background-color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.markdown-toolbar .markdown-code-language:hover,
+.markdown-toolbar .markdown-code-language:focus {
+  border-color: rgba(255, 120, 172, 0.72);
+  box-shadow: 0 0 0 3px rgba(255, 120, 172, 0.14);
+}
+
 .markdown-toolbar button::after {
   content: attr(data-tooltip);
   position: absolute;

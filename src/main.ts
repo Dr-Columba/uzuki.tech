@@ -139,6 +139,23 @@ const categorySlugPrefixes: Record<string, string> = Object.fromEntries(
   articleCategories.map((category) => [category.name, category.slugPrefix]),
 );
 
+const codeLanguageAliases: Record<string, string> = {
+  "c#": "cs",
+  "c++": "cpp",
+  csharp: "cs",
+  html: "xml",
+  js: "javascript",
+  jsonc: "json",
+  py: "python",
+  sh: "bash",
+  shell: "bash",
+  text: "plaintext",
+  ts: "typescript",
+};
+const supportedCodeLanguages = new Set([
+  "bash", "c", "cpp", "cs", "css", "go", "java", "javascript", "json", "plaintext", "python", "rust", "sql", "typescript", "xml",
+]);
+
 let editingArticleId: number | null = null;
 let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
 let adminUploads: ApiUpload[] = [];
@@ -506,7 +523,24 @@ function renderAdminPage(): string {
             <button type="button" data-md-tool="ul" data-tooltip="无序列表">•</button>
             <button type="button" data-md-tool="ol" data-tooltip="有序列表">1.</button>
             <button type="button" data-md-tool="inline-code" data-tooltip="行内代码">&#96;</button>
-            <button type="button" data-md-tool="code" data-tooltip="代码块">{ }</button>
+            <select class="markdown-code-language" data-code-language aria-label="插入代码块并选择语言" title="插入代码块并选择语言">
+              <option value="" selected>{ }</option>
+              <option value="plaintext">Text</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="xml">HTML / XML</option>
+              <option value="css">CSS</option>
+              <option value="json">JSON</option>
+              <option value="bash">Bash</option>
+              <option value="python">Python</option>
+              <option value="sql">SQL</option>
+              <option value="java">Java</option>
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="cs">C#</option>
+              <option value="go">Go</option>
+              <option value="rust">Rust</option>
+            </select>
             <button type="button" data-md-tool="link" data-tooltip="链接">↗</button>
           </div>
           <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
@@ -666,6 +700,8 @@ async function loadArticle(slug: string): Promise<void> {
     const data = (await response.json()) as { article?: ApiArticle };
     if (!data.article) throw new Error("Not found");
     pageRoot.innerHTML = renderArticle(data.article);
+    const content = pageRoot.querySelector<HTMLElement>(".article-content");
+    if (content) void highlightRenderedCode(content, data.article.markdown);
   } catch {
     pageRoot.innerHTML = `
       <section class="empty-state article-empty">
@@ -1487,6 +1523,11 @@ function handleAdminPreview(event: Event): void {
 
 function handleAdminUploadChange(event: Event): void {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.matches("[data-code-language]")) {
+    if (target.value) insertMarkdownCodeBlock(target.value);
+    target.value = "";
+    return;
+  }
   if (target instanceof HTMLSelectElement && target.matches("[data-article-category]")) {
     applyCategorySlugPrefix(target.value);
     return;
@@ -1548,6 +1589,34 @@ function updateMarkdownPreview(markdown: string): void {
   const preview = document.querySelector<HTMLElement>("[data-md-preview]");
   if (!preview) return;
   preview.innerHTML = renderMarkdownPreview(markdown) || "输入 Markdown 后这里会显示预览。";
+  void highlightRenderedCode(preview, markdown);
+}
+
+async function highlightRenderedCode(root: HTMLElement, markdown: string): Promise<void> {
+  const codeBlocks = root.querySelectorAll<HTMLElement>("pre code");
+  if (!codeBlocks.length) return;
+
+  const languages = readMarkdownCodeLanguages(markdown);
+  codeBlocks.forEach((code, index) => {
+    if (![...code.classList].some((className) => className.startsWith("language-"))) {
+      code.classList.add(`language-${languages[index] ?? "plaintext"}`);
+    }
+  });
+
+  const { highlightCodeBlocks } = await import("./syntax-highlight");
+  if (root.isConnected) highlightCodeBlocks(root);
+}
+
+function readMarkdownCodeLanguages(markdown: string): string[] {
+  const languages: string[] = [];
+  let insideCode = false;
+  for (const line of markdown.split("\n")) {
+    const fence = line.trim().match(/^```([^\s`]*)\s*$/);
+    if (!fence) continue;
+    if (!insideCode) languages.push(normalizeCodeLanguage(fence[1]));
+    insideCode = !insideCode;
+  }
+  return languages;
 }
 
 function insertMarkdown(tool: string): void {
@@ -1591,10 +1660,6 @@ function insertMarkdown(tool: string): void {
     next = `\`${fallback}\``;
     cursorStart = start + 1;
     cursorEnd = cursorStart + fallback.length;
-  } else if (tool === "code") {
-    next = `\n\`\`\`ts\n${selected || "代码"}\n\`\`\`\n`;
-    cursorStart = start + 7;
-    cursorEnd = cursorStart + (selected || "代码").length;
   } else if (tool === "link") {
     next = `[${fallback}](https://)`;
     cursorStart = start + fallback.length + 3;
@@ -1606,6 +1671,21 @@ function insertMarkdown(tool: string): void {
   textarea.setRangeText(next, start, end, "end");
   textarea.focus();
   textarea.setSelectionRange(cursorStart, cursorEnd);
+  updateMarkdownPreview(textarea.value);
+}
+
+function insertMarkdownCodeBlock(language: string): void {
+  const textarea = getArticleEditor()?.querySelector<HTMLTextAreaElement>("[data-md-source]");
+  if (!textarea) return;
+
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const content = textarea.value.slice(start, end) || "代码";
+  const opening = `\n\`\`\`${normalizeCodeLanguage(language)}\n`;
+  const block = `${opening}${content}\n\`\`\`\n`;
+  textarea.setRangeText(block, start, end, "end");
+  textarea.focus();
+  textarea.setSelectionRange(start + opening.length, start + opening.length + content.length);
   updateMarkdownPreview(textarea.value);
 }
 
@@ -1621,6 +1701,7 @@ function renderMarkdownPreview(markdown: string): string {
   let paragraph: string[] = [];
   let list: { type: "ul" | "ol"; items: string[] } | null = null;
   let code: string[] | null = null;
+  let codeLanguage = "";
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
@@ -1634,14 +1715,17 @@ function renderMarkdownPreview(markdown: string): string {
   };
 
   for (const line of lines) {
-    if (line.trim().startsWith("```")) {
+    const codeFence = line.trim().match(/^```([^\s`]*)\s*$/);
+    if (codeFence) {
       if (code) {
-        html.push(`<pre><code>${code.join("\n")}</code></pre>`);
+        html.push(renderCodeBlock(code, codeLanguage));
         code = null;
+        codeLanguage = "";
       } else {
         flushParagraph();
         flushList();
         code = [];
+        codeLanguage = normalizeCodeLanguage(codeFence[1]);
       }
       continue;
     }
@@ -1715,8 +1799,18 @@ function renderMarkdownPreview(markdown: string): string {
 
   flushParagraph();
   flushList();
-  if (code) html.push(`<pre><code>${code.join("\n")}</code></pre>`);
+  if (code) html.push(renderCodeBlock(code, codeLanguage));
   return html.join("");
+}
+
+function renderCodeBlock(lines: string[], language: string): string {
+  return `<pre><code class="language-${language}">${lines.join("\n")}</code></pre>`;
+}
+
+function normalizeCodeLanguage(value: string): string {
+  const language = value.trim().toLowerCase();
+  const normalized = codeLanguageAliases[language] ?? language;
+  return supportedCodeLanguages.has(normalized) ? normalized : "plaintext";
 }
 
 function renderInlineMarkdown(value: string): string {
