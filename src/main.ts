@@ -126,6 +126,19 @@ const categoryRoutes: Record<string, string> = {
   "/resources": "资源",
   "/gallery": "相册",
 };
+
+const articleCategories = [
+  { name: "公告", slugPrefix: "announcements" },
+  { name: "手记", slugPrefix: "notes" },
+  { name: "ACG", slugPrefix: "acg" },
+  { name: "资源", slugPrefix: "resources" },
+  { name: "相册", slugPrefix: "gallery" },
+] as const;
+
+const categorySlugPrefixes: Record<string, string> = Object.fromEntries(
+  articleCategories.map((category) => [category.name, category.slugPrefix]),
+);
+
 let editingArticleId: number | null = null;
 let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
 let adminUploads: ApiUpload[] = [];
@@ -476,8 +489,10 @@ function renderAdminPage(): string {
           </div>
           <p class="editor-state" data-editor-state>当前：新建文章</p>
           <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
-          <label>Slug<input type="text" placeholder="article-slug" data-article-slug /></label>
-          <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
+          <label>分类<select data-article-category>
+            ${articleCategories.map((category) => `<option value="${category.name}"${category.name === "手记" ? " selected" : ""}>${category.name}</option>`).join("")}
+          </select></label>
+          <label>Slug<input type="text" value="notes-" placeholder="notes-article-slug" data-article-slug /></label>
           <label>标签<input type="text" placeholder="用英文逗号分隔，例如 Bun, SQLite" data-article-tags /></label>
           <label>摘要<textarea rows="3" placeholder="首页文章摘要" data-article-summary></textarea></label>
           <label>封面图<input type="text" placeholder="/api/uploads/..." data-article-cover /></label>
@@ -995,7 +1010,7 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
 
   const titleInput = editor.querySelector<HTMLInputElement>("[data-article-title]");
   const slugInput = editor.querySelector<HTMLInputElement>("[data-article-slug]");
-  const categoryInput = editor.querySelector<HTMLInputElement>("[data-article-category]");
+  const categoryInput = editor.querySelector<HTMLSelectElement>("[data-article-category]");
   const tagsInput = editor.querySelector<HTMLInputElement>("[data-article-tags]");
   const summaryInput = editor.querySelector<HTMLTextAreaElement>("[data-article-summary]");
   const coverInput = editor.querySelector<HTMLInputElement>("[data-article-cover]");
@@ -1005,6 +1020,7 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   const slugValue = slugInput?.value.trim() ?? "";
   const slug = normalizeSlug(slugValue);
   const category = categoryInput?.value.trim() || "手记";
+  const categoryPrefix = categorySlugPrefixes[category];
   const markdown = markdownInput?.value ?? "";
 
   const invalidFields: Array<{
@@ -1015,7 +1031,13 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
 
   if (!title && titleInput) invalidFields.push({ label: "标题", message: "标题不能为空。", element: titleInput });
   if (!slugValue && slugInput) invalidFields.push({ label: "Slug", message: "Slug 不能为空。", element: slugInput });
-  if (slugValue && !slug && slugInput) {
+  if (!editingArticleId && categoryPrefix && slugValue === `${categoryPrefix}-` && slugInput) {
+    invalidFields.push({
+      label: "Slug",
+      message: `请在 ${categoryPrefix}- 后填写 Slug 内容。`,
+      element: slugInput,
+    });
+  } else if (slugValue && !slug && slugInput) {
     invalidFields.push({
       label: "Slug",
       message: "Slug 格式无效，仅支持英文字母、数字和连字符。",
@@ -1211,7 +1233,11 @@ function fillArticleEditor(article: ApiArticle): void {
   editingArticleId = article.id;
   editor.querySelector<HTMLInputElement>("[data-article-title]")!.value = article.title;
   editor.querySelector<HTMLInputElement>("[data-article-slug]")!.value = article.slug;
-  editor.querySelector<HTMLInputElement>("[data-article-category]")!.value = article.category;
+  const categorySelect = editor.querySelector<HTMLSelectElement>("[data-article-category]")!;
+  if (![...categorySelect.options].some((option) => option.value === article.category)) {
+    categorySelect.add(new Option(article.category, article.category));
+  }
+  categorySelect.value = article.category;
   editor.querySelector<HTMLInputElement>("[data-article-tags]")!.value = (article.tags ?? []).join(", ");
   editor.querySelector<HTMLTextAreaElement>("[data-article-summary]")!.value = article.summary;
   editor.querySelector<HTMLInputElement>("[data-article-cover]")!.value = article.coverImage ?? "";
@@ -1279,14 +1305,19 @@ function setUploadBusy(isBusy: boolean): void {
 
 function clearArticleEditor(): void {
   editingArticleId = null;
-  getArticleEditor()?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-    "[data-article-title], [data-article-slug], [data-article-category], [data-article-tags], [data-article-summary], [data-article-cover], [data-md-source]",
+  const editor = getArticleEditor();
+  editor?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    "[data-article-title], [data-article-slug], [data-article-tags], [data-article-summary], [data-article-cover], [data-md-source]",
   ).forEach((field) => {
     field.value = "";
     field.removeAttribute("aria-invalid");
     field.classList.remove("validation-pulse");
   });
-  const state = getArticleEditor()?.querySelector<HTMLElement>("[data-editor-state]");
+  const categorySelect = editor?.querySelector<HTMLSelectElement>("[data-article-category]");
+  if (categorySelect) categorySelect.value = "手记";
+  const slugInput = editor?.querySelector<HTMLInputElement>("[data-article-slug]");
+  if (slugInput) slugInput.value = "notes-";
+  const state = editor?.querySelector<HTMLElement>("[data-editor-state]");
   if (state) state.textContent = "当前：新建文章";
   updateMarkdownPreview("");
 }
@@ -1456,6 +1487,10 @@ function handleAdminPreview(event: Event): void {
 
 function handleAdminUploadChange(event: Event): void {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.matches("[data-article-category]")) {
+    applyCategorySlugPrefix(target.value);
+    return;
+  }
   if (target instanceof HTMLSelectElement && target.matches("[data-media-sort]")) {
     mediaSort = target.value as MediaSort;
     renderAdminUploads();
@@ -1466,6 +1501,21 @@ function handleAdminUploadChange(event: Event): void {
   if (!file) return;
   void uploadAdminImage(file);
   target.value = "";
+}
+
+function applyCategorySlugPrefix(category: string): void {
+  const slugInput = getArticleEditor()?.querySelector<HTMLInputElement>("[data-article-slug]");
+  const nextPrefix = categorySlugPrefixes[category];
+  if (!slugInput || !nextPrefix) return;
+
+  const currentValue = slugInput.value.trim();
+  const knownPrefix = articleCategories
+    .map((item) => `${item.slugPrefix}-`)
+    .find((prefix) => currentValue.startsWith(prefix));
+  const suffix = knownPrefix ? currentValue.slice(knownPrefix.length) : currentValue;
+  slugInput.value = `${nextPrefix}-${suffix}`;
+  slugInput.removeAttribute("aria-invalid");
+  slugInput.classList.remove("validation-pulse");
 }
 
 function handleEditorFocus(event: FocusEvent): void {
