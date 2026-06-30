@@ -934,13 +934,30 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   const markdownInput = document.querySelector<HTMLTextAreaElement>("[data-md-source]");
 
   const title = titleInput?.value.trim() ?? "";
-  const slug = normalizeSlug(slugInput?.value || title);
+  const slugValue = slugInput?.value.trim() ?? "";
+  const slug = normalizeSlug(slugValue);
   const category = categoryInput?.value.trim() || "手记";
   const markdown = markdownInput?.value ?? "";
 
-  if (!title || !slug || !markdown.trim()) {
-    setAdminMessage("标题、Slug 和正文不能为空。", "error");
-    showToast("标题、Slug 和正文不能为空。", "error");
+  const validationIssues: Array<{
+    label: string;
+    message: string;
+    field: HTMLInputElement | HTMLTextAreaElement;
+  }> = [];
+  if (!title && titleInput) validationIssues.push({ label: "标题", message: "请填写标题。", field: titleInput });
+  if (!slugValue && slugInput) validationIssues.push({ label: "Slug", message: "请填写 Slug。", field: slugInput });
+  if (slugValue && !slug && slugInput) {
+    validationIssues.push({ label: "Slug", message: "Slug 需包含英文字母、数字或连字符。", field: slugInput });
+  }
+  if (!markdown.trim() && markdownInput) validationIssues.push({ label: "正文", message: "请填写正文。", field: markdownInput });
+
+  if (validationIssues.length > 0) {
+    const message = validationIssues.length === 1
+      ? validationIssues[0].message
+      : `请填写：${Array.from(new Set(validationIssues.map((issue) => issue.label))).join("、")}。`;
+    setAdminMessage(message, "error");
+    showToast(message, "error");
+    highlightInvalidArticleFields(validationIssues.map((issue) => issue.field));
     return;
   }
 
@@ -1139,10 +1156,32 @@ function clearArticleEditor(): void {
     "[data-article-title], [data-article-slug], [data-article-category], [data-article-tags], [data-article-summary], [data-article-cover], [data-md-source]",
   ).forEach((field) => {
     field.value = "";
+    clearArticleFieldValidation(field);
   });
   const state = document.querySelector<HTMLElement>("[data-editor-state]");
   if (state) state.textContent = "当前：新建文章";
   updateMarkdownPreview("");
+}
+
+function highlightInvalidArticleFields(fields: Array<HTMLInputElement | HTMLTextAreaElement>): void {
+  fields.forEach((field) => {
+    field.setAttribute("aria-invalid", "true");
+    field.classList.remove("field-validation-pulse");
+    void field.offsetWidth;
+    field.classList.add("field-validation-pulse");
+  });
+
+  const firstField = fields[0];
+  firstField.scrollIntoView({
+    behavior: reducedMotion ? "auto" : "smooth",
+    block: "center",
+  });
+  firstField.focus({ preventScroll: true });
+}
+
+function clearArticleFieldValidation(field: HTMLInputElement | HTMLTextAreaElement): void {
+  field.removeAttribute("aria-invalid");
+  field.classList.remove("field-validation-pulse");
 }
 
 function handleInteractiveClick(event: MouseEvent): void {
@@ -1281,6 +1320,12 @@ function handleInteractiveKeydown(event: KeyboardEvent): void {
 
 function handleAdminPreview(event: Event): void {
   const target = event.target;
+  if (
+    (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)
+    && target.matches("[data-article-title], [data-article-slug], [data-md-source]")
+  ) {
+    clearArticleFieldValidation(target);
+  }
   if (target instanceof HTMLInputElement && target.matches("[data-article-search]")) {
     void loadAdminArticles();
     return;
