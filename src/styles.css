@@ -1100,7 +1100,8 @@ button:focus-visible,
 }
 
 .admin-panel input,
-.admin-panel textarea {
+.admin-panel textarea,
+.admin-panel select {
   width: 100%;
   border: 1px solid rgba(255, 120, 172, 0.22);
   border-radius: 8px;
@@ -1118,7 +1119,8 @@ button:focus-visible,
 }
 
 .admin-panel input:focus,
-.admin-panel textarea:focus {
+.admin-panel textarea:focus,
+.admin-panel select:focus {
   border-color: rgba(255, 120, 172, 0.72);
   box-shadow: 0 0 0 3px rgba(255, 120, 172, 0.14);
 }
@@ -1313,6 +1315,46 @@ button:focus-visible,
 
 .media-panel {
   grid-column: 1 / -1;
+}
+
+.media-upload-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.admin-panel .media-compress-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-panel .media-compress-option input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.media-library-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 260px);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.media-result-count {
+  min-height: 20px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .system-panel {
@@ -1925,6 +1967,20 @@ button:focus-visible,
   }
 
   .system-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .media-panel .admin-panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .media-upload-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .media-library-toolbar {
     grid-template-columns: 1fr;
   }
 }

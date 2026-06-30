@@ -45,7 +45,10 @@ type ApiUpload = {
   size: number;
   hash?: string | null;
   createdAt: string | number;
+  updatedAt?: string | number;
 };
+
+type MediaSort = "updated-desc" | "updated-asc" | "size-desc" | "size-asc" | "name-asc" | "name-desc";
 
 type ApiSystemInfo = {
   cpu: { percent: number };
@@ -125,7 +128,11 @@ const categoryRoutes: Record<string, string> = {
 };
 let editingArticleId: number | null = null;
 let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
+let adminUploads: ApiUpload[] = [];
+let mediaSearchQuery = "";
+let mediaSort: MediaSort = "updated-desc";
 let systemRefreshTimer = 0;
+const mediaNameCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -428,8 +435,27 @@ function renderAdminPage(): string {
         <section class="admin-panel media-panel" data-admin-content data-admin-section="media" hidden>
           <div class="admin-panel-title">
             <h2>媒体库</h2>
-            <button type="button" data-upload-button>上传图片</button>
+            <div class="media-upload-controls">
+              <label class="media-compress-option">
+                <input type="checkbox" data-compress-upload checked />
+                <span>WebP 有损压缩</span>
+              </label>
+              <button type="button" data-upload-button>上传图片</button>
+            </div>
           </div>
+          <div class="media-library-toolbar">
+            <input type="search" placeholder="搜索原文件名、格式或存储路径" aria-label="搜索媒体" data-media-search />
+            <select aria-label="媒体排序" data-media-sort>
+              <option value="updated-desc">修改时间：新到旧</option>
+              <option value="updated-asc">修改时间：旧到新</option>
+              <option value="size-desc">大小：大到小</option>
+              <option value="size-asc">大小：小到大</option>
+              <option value="name-asc">名称：A 到 Z</option>
+              <option value="name-desc">名称：Z 到 A</option>
+            </select>
+          </div>
+          <p class="media-result-count" data-media-result-count></p>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" data-upload-file hidden />
           <div class="media-list" data-admin-media-list>正在读取...</div>
         </section>
 
@@ -469,11 +495,10 @@ function renderAdminPage(): string {
             <button type="button" data-md-tool="link" data-tooltip="链接">↗</button>
           </div>
           <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
-          <input type="file" accept="image/*" data-upload-file hidden />
           <div class="editor-actions">
             <button type="button" data-save-draft>保存草稿</button>
             <button type="button" data-publish-article>发布</button>
-            <button type="button" data-upload-button>上传并插入正文</button>
+            <button type="button" data-open-media>上传图片</button>
           </div>
         </form>
 
@@ -896,24 +921,57 @@ async function loadAdminUploads(): Promise<void> {
     const response = await fetch("/api/admin/uploads", { credentials: "include" });
     if (!response.ok) throw new Error("Failed to load uploads");
     const data = (await response.json()) as { uploads?: ApiUpload[] };
-    const uploads = data.uploads ?? [];
-    adminStats.media = uploads.length;
+    adminUploads = data.uploads ?? [];
+    adminStats.media = adminUploads.length;
     renderAdminStats();
-    target.innerHTML = uploads.length
-      ? uploads.map(renderMediaItem).join("")
-      : `<p>还没有上传图片。上传后会出现在这里，可复用为封面或正文图片。</p>`;
+    renderAdminUploads();
   } catch {
+    adminUploads = [];
     target.innerHTML = `<p>媒体库读取失败，请确认后端已启动并已登录。</p>`;
   }
 }
 
+function renderAdminUploads(): void {
+  const target = document.querySelector<HTMLElement>("[data-admin-media-list]");
+  const count = document.querySelector<HTMLElement>("[data-media-result-count]");
+  if (!target) return;
+
+  const query = mediaSearchQuery.toLocaleLowerCase("zh-CN");
+  const uploads = adminUploads
+    .filter((upload) => {
+      if (!query) return true;
+      return [upload.originalName, upload.mimeType, upload.path]
+        .some((value) => value.toLocaleLowerCase("zh-CN").includes(query));
+    })
+    .sort(compareMediaUploads);
+
+  if (count) count.textContent = adminUploads.length ? `显示 ${uploads.length} / ${adminUploads.length}` : "";
+  target.innerHTML = uploads.length
+    ? uploads.map(renderMediaItem).join("")
+    : adminUploads.length
+      ? `<p>没有匹配的图片。</p>`
+      : `<p>还没有上传图片。上传后会出现在这里，可复用为封面或正文图片。</p>`;
+}
+
+function compareMediaUploads(left: ApiUpload, right: ApiUpload): number {
+  const leftTime = new Date(left.updatedAt ?? left.createdAt).getTime();
+  const rightTime = new Date(right.updatedAt ?? right.createdAt).getTime();
+  if (mediaSort === "updated-asc") return leftTime - rightTime;
+  if (mediaSort === "updated-desc") return rightTime - leftTime;
+  if (mediaSort === "size-asc") return left.size - right.size;
+  if (mediaSort === "size-desc") return right.size - left.size;
+  const nameOrder = mediaNameCollator.compare(left.originalName, right.originalName);
+  return mediaSort === "name-desc" ? -nameOrder : nameOrder;
+}
+
 function renderMediaItem(upload: ApiUpload): string {
+  const format = upload.mimeType.replace("image/", "").toUpperCase();
   return `
     <article class="media-item">
       <img src="${escapeHtml(upload.path)}" alt="${escapeHtml(upload.originalName)}" loading="lazy" />
       <div>
         <strong title="${escapeHtml(upload.originalName)}">${escapeHtml(upload.originalName)}</strong>
-        <small>${formatBytes(upload.size)} · ${formatDate(upload.createdAt)}</small>
+        <small>${escapeHtml(format)} · ${formatBytes(upload.size)} · ${formatDateTime(upload.updatedAt ?? upload.createdAt)}</small>
         <div class="media-actions">
           <button type="button" data-media-cover="${escapeHtml(upload.path)}">设为封面</button>
           <button type="button" data-media-insert="${escapeHtml(upload.path)}" data-media-name="${escapeHtml(upload.originalName)}">插入正文</button>
@@ -1023,14 +1081,19 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   }
 }
 
-async function uploadAdminImage(file: File): Promise<void> {
+async function uploadAdminImage(sourceFile: File): Promise<void> {
+  const shouldCompress = document.querySelector<HTMLInputElement>("[data-compress-upload]")?.checked ?? false;
   setAdminMessage("正在上传图片...");
-  showToast("正在上传图片...");
+  showToast(shouldCompress ? "正在处理并上传图片..." : "正在上传图片...");
   setUploadBusy(true);
-  const formData = new FormData();
-  formData.append("file", file);
 
   try {
+    const prepared = shouldCompress ? await compressImageForUpload(sourceFile) : sourceFile;
+    if (prepared.size > 5 * 1024 * 1024) throw new Error("File too large");
+
+    const formData = new FormData();
+    formData.append("file", prepared);
+    formData.append("originalName", sourceFile.name);
     const response = await fetch("/api/admin/uploads", {
       method: "POST",
       credentials: "include",
@@ -1038,18 +1101,11 @@ async function uploadAdminImage(file: File): Promise<void> {
     });
     if (!response.ok) throw new Error("Upload failed");
     const data = (await response.json()) as { upload?: ApiUpload; reused?: boolean };
-    const path = data.upload?.path;
-    if (!path) throw new Error("Upload path missing");
-    const editor = getArticleEditor();
-    const coverInput = editor?.querySelector<HTMLInputElement>("[data-article-cover]");
-    const markdownInput = editor?.querySelector<HTMLTextAreaElement>("[data-md-source]");
-    if (coverInput && !coverInput.value) coverInput.value = path;
-    if (markdownInput) {
-      markdownInput.value = `${markdownInput.value.trim()}\n\n![${file.name}](${path})`.trim();
-      updateMarkdownPreview(markdownInput.value);
-    }
+    if (!data.upload?.path) throw new Error("Upload path missing");
     await loadAdminUploads();
-    const message = data.reused ? "图片已存在，已复用并插入正文。" : "图片已上传，并已插入正文。";
+    const compressed = prepared !== sourceFile;
+    const saved = compressed ? `${formatBytes(sourceFile.size)} → ${formatBytes(prepared.size)}` : formatBytes(prepared.size);
+    const message = data.reused ? "图片已存在，已复用媒体库文件。" : `图片已上传到媒体库（${saved}）。`;
     setAdminMessage(message);
     showToast(message);
   } catch {
@@ -1057,6 +1113,45 @@ async function uploadAdminImage(file: File): Promise<void> {
     showToast("图片上传失败，请确认已登录且文件小于 5MB。", "error");
   } finally {
     setUploadBusy(false);
+  }
+}
+
+async function compressImageForUpload(file: File): Promise<File> {
+  if (file.type === "image/webp") return file;
+  if (file.type !== "image/jpeg" && file.type !== "image/png") {
+    showToast("此格式不进行有损转换，将保留原文件上传。");
+    return file;
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      bitmap.close();
+      throw new Error("Canvas unavailable");
+    }
+    try {
+      context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height);
+    } finally {
+      bitmap.close();
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!blob || blob.size >= file.size) {
+      showToast("WebP 未减少文件大小，将保留原文件上传。");
+      return file;
+    }
+
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "image";
+    return new File([blob], `${baseName}.webp`, { type: "image/webp", lastModified: file.lastModified });
+  } catch {
+    showToast("浏览器无法压缩这张图片，将保留原文件上传。", "error");
+    return file;
   }
 }
 
@@ -1246,6 +1341,13 @@ function handleInteractiveClick(event: MouseEvent): void {
     return;
   }
 
+  if (target.closest("[data-open-media]")) {
+    event.preventDefault();
+    switchAdminSection("media");
+    showToast("请在媒体库上传图片，再选择设为封面或插入正文。");
+    return;
+  }
+
   if (target.closest("[data-upload-button]")) {
     event.preventDefault();
     document.querySelector<HTMLInputElement>("[data-upload-file]")?.click();
@@ -1343,12 +1445,22 @@ function handleAdminPreview(event: Event): void {
     void loadAdminArticles();
     return;
   }
+  if (target instanceof HTMLInputElement && target.matches("[data-media-search]")) {
+    mediaSearchQuery = target.value.trim();
+    renderAdminUploads();
+    return;
+  }
   if (!(target instanceof HTMLTextAreaElement) || !target.matches("[data-md-source]")) return;
   updateMarkdownPreview(target.value);
 }
 
 function handleAdminUploadChange(event: Event): void {
   const target = event.target;
+  if (target instanceof HTMLSelectElement && target.matches("[data-media-sort]")) {
+    mediaSort = target.value as MediaSort;
+    renderAdminUploads();
+    return;
+  }
   if (!(target instanceof HTMLInputElement) || !target.matches("[data-upload-file]")) return;
   const file = target.files?.[0];
   if (!file) return;
@@ -1601,6 +1713,19 @@ function formatDate(value: string | number | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
   return date.toISOString().slice(0, 10);
+}
+
+function formatDateTime(value: string | number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function formatBytes(value: number): string {
