@@ -212,6 +212,7 @@ backtop?.addEventListener("click", () => window.scrollTo({ top: 0, behavior: red
 pet?.addEventListener("click", () => pet.classList.add("is-hidden"));
 document.addEventListener("click", handleInteractiveClick);
 document.addEventListener("keydown", handleInteractiveKeydown);
+document.addEventListener("submit", handleAdminSubmit);
 document.addEventListener("input", handleAdminPreview);
 document.addEventListener("change", handleAdminUploadChange);
 document.addEventListener("focusin", handleEditorFocus);
@@ -443,14 +444,14 @@ function renderAdminPage(): string {
           </div>
         </section>
 
-        <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" hidden>
+        <form class="admin-panel editor-panel" data-admin-content data-admin-section="editor" data-article-editor novalidate hidden>
           <div class="admin-panel-title">
             <h2>Markdown 编辑器</h2>
             <button type="button" data-new-article>新建文章</button>
           </div>
           <p class="editor-state" data-editor-state>当前：新建文章</p>
-          <label>标题<input type="text" placeholder="文章标题" data-article-title /></label>
-          <label>Slug<input type="text" placeholder="article-slug" data-article-slug /></label>
+          <label>标题<input type="text" placeholder="文章标题" data-article-title /><small class="field-error" data-field-error="title"></small></label>
+          <label>Slug<input type="text" placeholder="article-slug" data-article-slug /><small class="field-error" data-field-error="slug"></small></label>
           <label>分类<input type="text" placeholder="公告 / 手记 / ACG / 资源 / 相册" data-article-category /></label>
           <label>标签<input type="text" placeholder="用英文逗号分隔，例如 Bun, SQLite" data-article-tags /></label>
           <label>摘要<textarea rows="3" placeholder="首页文章摘要" data-article-summary></textarea></label>
@@ -468,11 +469,12 @@ function renderAdminPage(): string {
             <button type="button" data-md-tool="code" data-tooltip="代码块">{ }</button>
             <button type="button" data-md-tool="link" data-tooltip="链接">↗</button>
           </div>
-          <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea></label>
+          <label>正文<textarea data-md-source rows="14" placeholder="支持 Markdown。Bilibili iframe 可粘贴到这里预览。"></textarea><small class="field-error" data-field-error="markdown"></small></label>
           <input type="file" accept="image/*" data-upload-file hidden />
+          <p class="editor-validation-summary" data-editor-validation aria-live="assertive"></p>
           <div class="editor-actions">
-            <button type="button" data-save-draft>保存草稿</button>
-            <button type="button" data-publish-article>发布</button>
+            <button type="submit" data-save-draft data-article-submit="draft">保存草稿</button>
+            <button type="submit" data-publish-article data-article-submit="published">发布</button>
             <button type="button" data-upload-button>上传并插入正文</button>
           </div>
         </form>
@@ -939,6 +941,10 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
   const category = categoryInput?.value.trim() || "手记";
   const markdown = markdownInput?.value ?? "";
 
+  [titleInput, slugInput, markdownInput].forEach((field) => {
+    if (field) clearArticleFieldValidation(field);
+  });
+
   const validationIssues: Array<{
     label: string;
     message: string;
@@ -956,10 +962,14 @@ async function saveArticle(status: "draft" | "published"): Promise<void> {
       ? validationIssues[0].message
       : `请填写：${Array.from(new Set(validationIssues.map((issue) => issue.label))).join("、")}。`;
     setAdminMessage(message, "error");
+    setEditorValidationMessage(message);
     showToast(message, "error");
+    validationIssues.forEach((issue) => setArticleFieldError(issue.field, issue.message));
     highlightInvalidArticleFields(validationIssues.map((issue) => issue.field));
     return;
   }
+
+  setEditorValidationMessage("");
 
   setAdminMessage(status === "published" ? "正在发布..." : "正在保存草稿...");
   showToast(status === "published" ? "正在发布文章..." : "正在保存草稿...");
@@ -1160,6 +1170,7 @@ function clearArticleEditor(): void {
   });
   const state = document.querySelector<HTMLElement>("[data-editor-state]");
   if (state) state.textContent = "当前：新建文章";
+  setEditorValidationMessage("");
   updateMarkdownPreview("");
 }
 
@@ -1182,6 +1193,27 @@ function highlightInvalidArticleFields(fields: Array<HTMLInputElement | HTMLText
 function clearArticleFieldValidation(field: HTMLInputElement | HTMLTextAreaElement): void {
   field.removeAttribute("aria-invalid");
   field.classList.remove("field-validation-pulse");
+  const errorKey = field.matches("[data-article-title]")
+    ? "title"
+    : field.matches("[data-article-slug]")
+      ? "slug"
+      : field.matches("[data-md-source]")
+        ? "markdown"
+        : "";
+  if (errorKey) {
+    const error = document.querySelector<HTMLElement>(`[data-field-error="${errorKey}"]`);
+    if (error) error.textContent = "";
+  }
+}
+
+function setArticleFieldError(field: HTMLInputElement | HTMLTextAreaElement, message: string): void {
+  const error = field.parentElement?.querySelector<HTMLElement>("[data-field-error]");
+  if (error) error.textContent = message;
+}
+
+function setEditorValidationMessage(message: string): void {
+  const target = document.querySelector<HTMLElement>("[data-editor-validation]");
+  if (target) target.textContent = message;
 }
 
 function handleInteractiveClick(event: MouseEvent): void {
@@ -1219,18 +1251,6 @@ function handleInteractiveClick(event: MouseEvent): void {
   if (target.closest("[data-logout-button]")) {
     event.preventDefault();
     void logoutAdmin();
-    return;
-  }
-
-  if (target.closest("[data-save-draft]")) {
-    event.preventDefault();
-    void saveArticle("draft");
-    return;
-  }
-
-  if (target.closest("[data-publish-article]")) {
-    event.preventDefault();
-    void saveArticle("published");
     return;
   }
 
@@ -1306,6 +1326,16 @@ function handleInteractiveClick(event: MouseEvent): void {
   if (staticAction) {
     playClickFeedback(staticAction);
   }
+}
+
+function handleAdminSubmit(event: SubmitEvent): void {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.matches("[data-article-editor]")) return;
+
+  event.preventDefault();
+  const submitter = event.submitter;
+  const status = submitter instanceof HTMLButtonElement ? submitter.dataset.articleSubmit : undefined;
+  void saveArticle(status === "published" ? "published" : "draft");
 }
 
 function handleInteractiveKeydown(event: KeyboardEvent): void {

@@ -1133,6 +1133,30 @@ button:focus-visible,
   animation: field-validation-pulse 760ms ease-in-out 2;
 }
 
+.field-error {
+  min-height: 0;
+  color: #d94682;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+.editor-validation-summary {
+  min-height: 0;
+  margin: 0 0 12px;
+  color: #d94682;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.editor-validation-summary:empty {
+  display: none;
+}
+
 @keyframes field-validation-pulse {
   0%,
   100% {
