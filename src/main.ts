@@ -161,6 +161,10 @@ let adminStats = { total: 0, published: 0, drafts: 0, media: 0 };
 let adminUploads: ApiUpload[] = [];
 let mediaSearchQuery = "";
 let mediaSort: MediaSort = "updated-desc";
+let mediaPreviewItems: ApiUpload[] = [];
+let mediaPreviewIndex = -1;
+let mediaPreviewReturnFocus: HTMLElement | null = null;
+let mediaPreviewCloseTimer = 0;
 let systemRefreshTimer = 0;
 const mediaNameCollator = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
 
@@ -198,6 +202,16 @@ app.innerHTML = `
       <label for="site-search">Search</label>
       <input id="site-search" type="search" placeholder="输入搜索关键词..." autocomplete="off" />
     </form>
+  </div>
+
+  <div class="media-lightbox" data-media-lightbox role="dialog" aria-modal="true" aria-label="图片预览" hidden>
+    <button class="media-lightbox-close" type="button" aria-label="关闭预览" title="关闭" data-media-lightbox-close>×</button>
+    <button class="media-lightbox-nav previous" type="button" aria-label="上一张" title="上一张" data-media-lightbox-previous>‹</button>
+    <figure>
+      <img src="" alt="" data-media-lightbox-image />
+      <figcaption data-media-lightbox-caption></figcaption>
+    </figure>
+    <button class="media-lightbox-nav next" type="button" aria-label="下一张" title="下一张" data-media-lightbox-next>›</button>
   </div>
 
   <canvas class="mouse-trail" data-mouse-trail aria-hidden="true"></canvas>
@@ -242,6 +256,14 @@ searchModal?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const lightbox = document.querySelector<HTMLElement>("[data-media-lightbox]");
+  if (lightbox && !lightbox.hidden) {
+    if (event.key === "Escape") closeMediaLightbox();
+    if (event.key === "ArrowLeft") changeMediaPreview(-1);
+    if (event.key === "ArrowRight") changeMediaPreview(1);
+    if (["Escape", "ArrowLeft", "ArrowRight"].includes(event.key)) event.preventDefault();
+    return;
+  }
   if (event.key === "Escape") closeSearch();
 });
 
@@ -987,14 +1009,7 @@ function renderAdminUploads(): void {
   const count = document.querySelector<HTMLElement>("[data-media-result-count]");
   if (!target) return;
 
-  const query = mediaSearchQuery.toLocaleLowerCase("zh-CN");
-  const uploads = adminUploads
-    .filter((upload) => {
-      if (!query) return true;
-      return [upload.originalName, upload.mimeType, upload.path]
-        .some((value) => value.toLocaleLowerCase("zh-CN").includes(query));
-    })
-    .sort(compareMediaUploads);
+  const uploads = getVisibleAdminUploads();
 
   if (count) count.textContent = adminUploads.length ? `显示 ${uploads.length} / ${adminUploads.length}` : "";
   target.innerHTML = uploads.length
@@ -1002,6 +1017,17 @@ function renderAdminUploads(): void {
     : adminUploads.length
       ? `<p>没有匹配的图片。</p>`
       : `<p>还没有上传图片。上传后会出现在这里，可复用为封面或正文图片。</p>`;
+}
+
+function getVisibleAdminUploads(): ApiUpload[] {
+  const query = mediaSearchQuery.toLocaleLowerCase("zh-CN");
+  return adminUploads
+    .filter((upload) => {
+      if (!query) return true;
+      return [upload.originalName, upload.mimeType, upload.path]
+        .some((value) => value.toLocaleLowerCase("zh-CN").includes(query));
+    })
+    .sort(compareMediaUploads);
 }
 
 function compareMediaUploads(left: ApiUpload, right: ApiUpload): number {
@@ -1019,7 +1045,9 @@ function renderMediaItem(upload: ApiUpload): string {
   const format = upload.mimeType.replace("image/", "").toUpperCase();
   return `
     <article class="media-item">
-      <img src="${escapeHtml(upload.path)}" alt="${escapeHtml(upload.originalName)}" loading="lazy" />
+      <button class="media-preview-button" type="button" aria-label="预览 ${escapeHtml(upload.originalName)}" data-media-preview="${upload.id}">
+        <img src="${escapeHtml(upload.path)}" alt="${escapeHtml(upload.originalName)}" loading="lazy" />
+      </button>
       <div>
         <strong title="${escapeHtml(upload.originalName)}">${escapeHtml(upload.originalName)}</strong>
         <small>${escapeHtml(format)} · ${formatBytes(upload.size)} · ${formatDateTime(upload.updatedAt ?? upload.createdAt)}</small>
@@ -1031,6 +1059,73 @@ function renderMediaItem(upload: ApiUpload): string {
       </div>
     </article>
   `;
+}
+
+function openMediaLightbox(id: number, trigger: HTMLElement): void {
+  mediaPreviewItems = getVisibleAdminUploads();
+  mediaPreviewIndex = mediaPreviewItems.findIndex((upload) => upload.id === id);
+  if (mediaPreviewIndex < 0) return;
+
+  const lightbox = document.querySelector<HTMLElement>("[data-media-lightbox]");
+  if (!lightbox) return;
+  window.clearTimeout(mediaPreviewCloseTimer);
+  mediaPreviewReturnFocus = trigger;
+  renderMediaLightbox();
+  lightbox.hidden = false;
+  document.body.classList.add("media-lightbox-open");
+  requestAnimationFrame(() => lightbox.classList.add("is-open"));
+  lightbox.querySelector<HTMLButtonElement>("[data-media-lightbox-close]")?.focus();
+}
+
+function renderMediaLightbox(): void {
+  const upload = mediaPreviewItems[mediaPreviewIndex];
+  const image = document.querySelector<HTMLImageElement>("[data-media-lightbox-image]");
+  const caption = document.querySelector<HTMLElement>("[data-media-lightbox-caption]");
+  const previous = document.querySelector<HTMLButtonElement>("[data-media-lightbox-previous]");
+  const next = document.querySelector<HTMLButtonElement>("[data-media-lightbox-next]");
+  if (!upload || !image || !caption) return;
+
+  image.classList.remove("is-changing");
+  void image.offsetWidth;
+  delete image.dataset.missingImage;
+  image.src = upload.path;
+  image.alt = upload.originalName;
+  image.classList.add("is-changing");
+  caption.textContent = `${upload.originalName} · ${mediaPreviewIndex + 1} / ${mediaPreviewItems.length}`;
+  const hasMultiple = mediaPreviewItems.length > 1;
+  if (previous) previous.hidden = !hasMultiple;
+  if (next) next.hidden = !hasMultiple;
+
+  if (hasMultiple) {
+    const previousUpload = mediaPreviewItems[(mediaPreviewIndex - 1 + mediaPreviewItems.length) % mediaPreviewItems.length];
+    const nextUpload = mediaPreviewItems[(mediaPreviewIndex + 1) % mediaPreviewItems.length];
+    [previousUpload, nextUpload].forEach((item) => {
+      const preload = new Image();
+      preload.src = item.path;
+    });
+  }
+}
+
+function changeMediaPreview(offset: number): void {
+  if (mediaPreviewItems.length < 2 || mediaPreviewIndex < 0) return;
+  mediaPreviewIndex = (mediaPreviewIndex + offset + mediaPreviewItems.length) % mediaPreviewItems.length;
+  renderMediaLightbox();
+}
+
+function closeMediaLightbox(): void {
+  const lightbox = document.querySelector<HTMLElement>("[data-media-lightbox]");
+  if (!lightbox || lightbox.hidden) return;
+  lightbox.classList.remove("is-open");
+  document.body.classList.remove("media-lightbox-open");
+  const finish = () => {
+    lightbox.hidden = true;
+    mediaPreviewItems = [];
+    mediaPreviewIndex = -1;
+    mediaPreviewReturnFocus?.focus();
+    mediaPreviewReturnFocus = null;
+  };
+  if (reducedMotion) finish();
+  else mediaPreviewCloseTimer = window.setTimeout(finish, 180);
 }
 
 function getArticleEditor(): HTMLFormElement | null {
@@ -1361,6 +1456,31 @@ function clearArticleEditor(): void {
 function handleInteractiveClick(event: MouseEvent): void {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  if (target.matches("[data-media-lightbox]") || target.closest("[data-media-lightbox-close]")) {
+    event.preventDefault();
+    closeMediaLightbox();
+    return;
+  }
+
+  if (target.closest("[data-media-lightbox-previous]")) {
+    event.preventDefault();
+    changeMediaPreview(-1);
+    return;
+  }
+
+  if (target.closest("[data-media-lightbox-next]")) {
+    event.preventDefault();
+    changeMediaPreview(1);
+    return;
+  }
+
+  const mediaPreview = target.closest<HTMLElement>("[data-media-preview]");
+  if (mediaPreview) {
+    event.preventDefault();
+    openMediaLightbox(Number(mediaPreview.dataset.mediaPreview), mediaPreview);
+    return;
+  }
 
   const tabButton = target.closest<HTMLButtonElement>("[data-admin-tab]");
   if (tabButton) {
