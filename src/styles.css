@@ -1772,8 +1772,49 @@ body.media-lightbox-open {
   padding: 0;
   color: #fff;
   background: transparent;
+  font-size: 0;
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.media-lightbox-close::before,
+.media-lightbox-close::after,
+.media-lightbox-nav::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+.media-lightbox-close::before,
+.media-lightbox-close::after {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.media-lightbox-close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.media-lightbox-close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.media-lightbox-nav::before {
+  width: 11px;
+  height: 11px;
+  border-right: 3px solid #fff;
+  border-bottom: 3px solid #fff;
+}
+
+.media-lightbox-nav.previous::before {
+  transform: translate(-50%, -50%) rotate(135deg);
+}
+
+.media-lightbox-nav.next::before {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .media-lightbox-close:hover,
@@ -1787,15 +1828,11 @@ body.media-lightbox-open {
   top: 20px;
   right: 20px;
   z-index: 2;
-  font-size: 30px;
-  line-height: 1;
 }
 
 .media-lightbox-nav {
   top: 50%;
   z-index: 2;
-  font-size: 38px;
-  line-height: 1;
   transform: translateY(-50%);
 }
 
